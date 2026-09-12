@@ -206,6 +206,11 @@ Get-ChildItem $publicPath -Force | Where-Object { $_.Name -ne '.git' } | Remove-
 & tar -xf $archive -C $publicPath
 Remove-Item $archive -Force
 
+# add -A обов'язковий: файли не переписуються на місці, а зносяться й розпаковуються заново, тож у
+# коміт мають потрапити і зміни, і **видалення** того, чого в новій версії немає.
+& git -C $publicPath add -A
+if ($LASTEXITCODE -ne 0) { throw 'git add у публічній копії не вдався' }
+
 # Автор публічних комітів — нейтральний, щоб особиста пошта не їхала на GitHub.
 & git -c user.name='KeySwitcher' -c user.email='KeySwitcher@users.noreply.github.com' `
     -C $publicPath commit -q -m "KeySwitcher $next"
