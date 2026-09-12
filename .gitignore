@@ -1,0 +1,84 @@
+## .NET / Visual Studio
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio files
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.pidb
+*.svclog
+*.scc
+
+# Installer: публікація застосунку і зібраний setup — артефакти, а не код (installer/build-installer.ps1)
+installer/publish/
+installer/out/
+
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+
+# MSBuild
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Test results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+TestResult.xml
+[Rr]esult.xml
+
+# ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# Rider
+.idea/
+*.sln.iml
+
+# JetBrains
+.idea/
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# App-specific
+/KeySwitcher.UI/Resources/app.ico
+
+# Локальні нотатки й інструменти робочого процесу: лишаються у робочій копії, у репозиторій
+# не потрапляють. AGENTS.md/CLAUDE.md читає агент, PLAN.md і SESSIONS.md — щоденник робіт,
+# .claude/ — команда сесії та хук автокоміту.
+/AGENTS.md
+/CLAUDE.md
+/PLAN.md
+/SESSIONS.md
+/.claude/
