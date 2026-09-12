@@ -57,9 +57,24 @@ jobs:
           $setup = Get-ChildItem installer\out\KeySwitcherSetup-*.exe | Select-Object -First 1
           $ghArgs = @(
             'release', 'create', $env:GITHUB_REF_NAME, $setup.FullName,
-            '--title', "KeySwitcher $version",
-            '--generate-notes'
+            '--title', "KeySwitcher $version"
           )
+          # Текст релізу їде в анотації тега. Анотацію ставить publish-release.ps1 — і тільки після
+          # того, як людина погодила текст, тож у реліз потрапляє саме те, що вона прочитала.
+          # Тег, поставлений вручну й без анотації, тексту не несе: для такого випадку лишається
+          # GitHub-генерація зі списку комітів.
+          $notes = (git for-each-ref "refs/tags/$env:GITHUB_REF_NAME" --format='%(contents)') -join "`n"
+          if ($notes.Trim()) {
+            $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+            Set-Content -Path $notesFile -Value $notes.Trim() -Encoding utf8
+            $ghArgs += @('--notes-file', $notesFile)
+            Write-Host 'Текст релізу — з анотації тега (погоджений перед публікацією):'
+            Write-Host $notes
+          }
+          else {
+            $ghArgs += '--generate-notes'
+            Write-Host 'Анотації тега немає — текст генерує GitHub із комітів.'
+          }
           # Версія з дефісом (v1.1.0-beta.1) їде як pre-release: застосунок поки що тестується.
           if ($env:GITHUB_REF_NAME -match '-') { $ghArgs += '--prerelease' }
           gh @ghArgs
