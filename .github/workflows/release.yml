@@ -1,0 +1,65 @@
+name: Release
+
+# Реліз випускається тегом: раннер сам збирає інсталятор і створює Release із прикріпленим файлом.
+# Тег ставить скрипт .github/skills/release/scripts/publish-release.ps1 — вручну тег пушити не треба.
+on:
+  push:
+    tags: ['v*']
+
+# contents: write потрібен, щоб створити Release і прикріпити до нього інсталятор.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Інсталятор і Release
+    runs-on: windows-latest
+    steps:
+      - name: Отримати код
+        uses: actions/checkout@v5
+
+      - name: Встановити .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      # На windows-latest Inno Setup не стоїть; build-installer.ps1 шукає ISCC у
+      # Program Files (x86), Program Files і %LOCALAPPDATA%\Programs — сюди він і потрапить.
+      - name: Встановити Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      # Тег і <Version> у Directory.Build.props мусять збігатися: інакше реліз називався б однією
+      # версією, а інсталятор усередині був би іншої.
+      - name: Перевірити, що тег збігається з версією збірки
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME -replace '^v', ''
+          [xml]$props = Get-Content Directory.Build.props
+          $version = $props.Project.PropertyGroup.Version
+          if ($tag -ne $version) {
+            throw "Тег $env:GITHUB_REF_NAME не збігається з <Version>$version</Version> у Directory.Build.props — підніми версію в коді перед тегом."
+          }
+          Write-Host "Версія $version збігається з тегом"
+
+      - name: Тести
+        run: dotnet test KeySwitcher.slnx --configuration Release --nologo
+
+      - name: Зібрати інсталятор
+        shell: pwsh
+        run: .\installer\build-installer.ps1
+
+      - name: Створити Release з інсталятором
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $setup = Get-ChildItem installer\out\KeySwitcherSetup-*.exe | Select-Object -First 1
+          $ghArgs = @(
+            'release', 'create', $env:GITHUB_REF_NAME, $setup.FullName,
+            '--title', "KeySwitcher $version",
+            '--generate-notes'
+          )
+          # Версія з дефісом (v1.1.0-beta.1) їде як pre-release: застосунок поки що тестується.
+          if ($env:GITHUB_REF_NAME -match '-') { $ghArgs += '--prerelease' }
+          gh @ghArgs

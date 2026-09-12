@@ -149,6 +149,20 @@ dotnet test  KeySwitcher.slnx --nologo     # 381 тест
 
 Перед перезбіркою застосунок треба закрити — він тримає власні файли: `Stop-Process -Name KeySwitcher.UI -Force`.
 
+### 🚢 Релізи
+
+Версія задана в одному місці — `Directory.Build.props`; звідти вона їде у версію exe, в інсталятор і в
+назву GitHub Release. Випустити реліз — один скрипт:
+
+```powershell
+.\.github\skills\release\scripts\publish-release.ps1 -Bump patch   # або -Bump minor|major, або -Set 1.2.0
+```
+
+Він піднімає версію, проганяє тести, збирає інсталятор, пушить код і ставить тег `vX.Y.Z` — далі
+[`release.yml`](.github/workflows/release.yml) на GitHub сам збирає інсталятор і створює Release із
+прикріпленим файлом (версія з дефісом у тегу стає pre-release). Опис процесу й застереження — у скілі
+[`.github/skills/release/SKILL.md`](.github/skills/release/SKILL.md).
+
 ---
 
 ## 🖱️ Як користуватися
