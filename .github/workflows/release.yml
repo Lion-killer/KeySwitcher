@@ -33,7 +33,9 @@ jobs:
       - name: Перевірити, що тег збігається з версією збірки
         shell: pwsh
         run: |
-          $tag = $env:GITHUB_REF_NAME -replace '^v', ''
+          # Суфікс у тегу (v1.0.1-beta.1) версією в коді не є: exe та інсталятор однаково мають три
+          # числа, тому порівнюємо саме з ними, а дефіс лише робить реліз pre-release (див. нижче).
+          $tag = $env:GITHUB_REF_NAME -replace '^v', '' -replace '-.*$', ''
           [xml]$props = Get-Content Directory.Build.props
           $version = $props.Project.PropertyGroup.Version
           if ($tag -ne $version) {
