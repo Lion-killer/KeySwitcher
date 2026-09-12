@@ -212,9 +212,16 @@ Remove-Item $archive -Force
 if ($LASTEXITCODE -ne 0) { throw 'git add у публічній копії не вдався' }
 
 # Автор публічних комітів — нейтральний, щоб особиста пошта не їхала на GitHub.
-& git -c user.name='KeySwitcher' -c user.email='KeySwitcher@users.noreply.github.com' `
-    -C $publicPath commit -q -m "KeySwitcher $next"
-if ($LASTEXITCODE -ne 0) { throw 'git commit у публічній копії не вдався' }
+# Порожнього коміту не робимо: коли реліз повторюють тією ж версією, у публічній копії вже все, що є в
+# HEAD, і git commit упав би на «nothing to commit».
+if ((& git -C $publicPath diff --cached --name-only)) {
+    & git -c user.name='KeySwitcher' -c user.email='KeySwitcher@users.noreply.github.com' `
+        -C $publicPath commit -q -m "KeySwitcher $next"
+    if ($LASTEXITCODE -ne 0) { throw 'git commit у публічній копії не вдався' }
+}
+else {
+    Write-Ok 'публічна копія вже збігається з HEAD — коміт не потрібен'
+}
 
 & git -C $publicPath push -q origin main
 if ($LASTEXITCODE -ne 0) { throw 'git push main не вдався' }
