@@ -65,7 +65,17 @@ jobs:
           # того, як людина погодила текст, тож у реліз потрапляє саме те, що вона прочитала.
           # Тег, поставлений вручну й без анотації, тексту не несе, і тоді реліз не публікується:
           # він стає чернеткою, яку людина переглядає й публікує (або править) сама.
-          $notes = (git for-each-ref "refs/tags/$env:GITHUB_REF_NAME" --format='%(contents)') -join "`n"
+          #
+          # Анотацію читаємо через API, а не з локального тега: actions/checkout із fetch-depth: 1
+          # кладе тег на коміт, і тоді git for-each-ref віддає повідомлення коміту («KeySwitcher
+          # 1.0.0») замість анотації. Саме на цьому зламався перший реліз v1.0.0 — текст вийшов
+          # в один рядок, хоч анотація була на місці.
+          $notes = ''
+          $tagRef = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$env:GITHUB_REF_NAME" | ConvertFrom-Json
+          if ($tagRef.object.type -eq 'tag') {
+            $notes = (gh api "repos/$env:GITHUB_REPOSITORY/git/tags/$($tagRef.object.sha)" | ConvertFrom-Json).message
+          }
+
           if ($notes.Trim()) {
             $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
             Set-Content -Path $notesFile -Value $notes.Trim() -Encoding utf8
