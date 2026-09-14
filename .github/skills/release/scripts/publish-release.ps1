@@ -1,3 +1,7 @@
+#Requires -Version 7.0
+# PS 5.1 не годиться: там Set-Content -Encoding utf8 пише BOM, і той поїхав би в анотацію тега,
+# а звідти — у текст релізу.
+
 <#
 .SYNOPSIS
     Випускає реліз KeySwitcher: версія → тести → інсталятор → публічна копія → тег → GitHub Release.
@@ -24,6 +28,7 @@
 .EXAMPLE
     .\publish-release.ps1 -Bump patch              # 1.0.1, повний цикл
     .\publish-release.ps1 -Bump patch -DryRun      # показати план і нічого не робити
+    .\publish-release.ps1 -Bump patch -PrepareNotes  # скласти й показати ченджлог, нічого не змінюючи
     .\publish-release.ps1 -Set 1.1.0 -SkipTests
     .\publish-release.ps1 -Set 1.1.0               # повторити реліз 1.1.0 після відмови від тексту
 #>
@@ -45,8 +50,9 @@ param(
     # його можна доробити руками й повторити запуск.
     [string]$NotesFile = '',
 
-    # Скласти текст заново, навіть якщо файл уже є (правки, зроблені минулого разу, буде втрачено).
-    [switch]$RegenerateNotes,
+    # Скласти й показати текст ченджлогу — і на цьому спинитися: ні версії, ні комітів, ні тега.
+    # Погодження цим НЕ дається: його дає тільки людина відповіддю на запит у самому релізі.
+    [switch]$PrepareNotes,
 
     [switch]$SkipTests,
 
@@ -65,6 +71,9 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 function Write-Step([string]$Text) { Write-Host "`n=== $Text" -ForegroundColor Cyan }
 function Write-Ok([string]$Text) { Write-Host "    $Text" -ForegroundColor Green }
+# Усе, що пишемо у файли, зводимо до CRLF: текст склеюється з різних джерел (git, наш `n, файл
+# погодженого тексту), і без цього в CHANGELOG.md опинилися б змішані переноси.
+function ToCrLf([string]$Text) { ($Text -replace "`r`n", "`n") -replace "`n", "`r`n" }
 
 $script:repoRoot = (& git -C $PSScriptRoot rev-parse --show-toplevel 2>$null)
 if ($LASTEXITCODE -ne 0 -or -not $script:repoRoot) { throw 'Не вдалося знайти корінь репозиторію (git rev-parse).' }
@@ -124,24 +133,127 @@ Write-Ok "$current → $next (тег $tag)"
 
 if ($DryRun) {
     Write-Step 'План (dry-run, нічого не змінено)'
-    Write-Host "    1. $bumpScript -Set $next"
-    if (-not $SkipTests) { Write-Host '    2. dotnet test KeySwitcher.slnx' }
-    Write-Host '    3. installer\build-installer.ps1'
-    Write-Host "    4. git commit «Версія $next» у робочому репозиторії"
-    Write-Host "    5. синхронізувати $publicPath з HEAD і запушити main"
-    Write-Host '    6. згенерувати текст релізу й дочекатися згоди (без згоди тег не ставиться)'
-    Write-Host "    7. git tag $tag з погодженим текстом і push — далі workflow Release збирає інсталятор"
-    return
+    Write-Host "    1. взяти погоджений текст із installer\out\release-notes-$tag.md (без нього — стоп)"
+    Write-Host "    2. $bumpScript -Set $next"
+    Write-Host "    3. додати розділ $tag угору CHANGELOG.md"
+    if (-not $SkipTests) { Write-Host '    4. dotnet test KeySwitcher.slnx' }
+    Write-Host '    5. installer\build-installer.ps1'
+    Write-Host "    6. git commit «Версія $next» (Directory.Build.props + CHANGELOG.md)"
+    Write-Host "    7. синхронізувати $publicPath з HEAD і запушити main"
+    Write-Host "    8. git tag $tag з погодженим текстом і push — далі workflow Release збирає інсталятор"
+    # Саме exit 0, а не return: остання нативна команда перед цим — git rev-parse --verify на тезі,
+    # якого ще немає. Вона законно виходить із кодом 1, і PowerShell віддав би цю одиницю як код
+    # завершення процесу — успішний dry-run виглядав би як провал.
+    exit 0
 }
 
-# --- 3. версія в коді --------------------------------------------------------------------------
+# Чернетка ченджлогу зі списку комітів — саме чернетка: нічого не пише й нікуди не їде. Джерело —
+# коміти **робочого** репозиторію від попереднього релізу: саме вони описують зміни людською мовою.
+# Публічна копія не годиться (там кожен реліз — один коміт «KeySwitcher X.Y.Z»), а генератор GitHub
+# для ще неіснуючого тега віддає самий рядок Full Changelog (перевірено).
+function New-DraftNotes {
+    $prevTag = & git -C $repoRoot tag --list 'v*' --sort=-v:refname | Select-Object -First 1
+    $range = if ($prevTag) { "$prevTag..HEAD" } else { 'HEAD' }
+
+    $lines = @(& git -C $repoRoot log --no-merges --reverse --pretty='- %s' $range)
+    # Коміт самої версії в списку змін — шум: користувачеві він нічого не каже.
+    $lines = @($lines | Where-Object { $_ -notmatch '^- Версія \d+\.\d+\.\d+$' })
+
+    $compareUrl = if ($prevTag) { "https://github.com/$slug/compare/$prevTag...$tag" }
+    else { "https://github.com/$slug/commits/$tag" }
+
+    return (@('## Що змінилося', '') + $lines + @('', "**Повний список змін**: $compareUrl")) -join "`n"
+}
+
+$notesPath = if ($NotesFile) { $NotesFile } else { Join-Path $repoRoot "installer\out\release-notes-$tag.md" }
+# git з -C міняє теку, тож відносний шлях до файлу в його аргументах поїхав би не туди.
+$notesPath = [System.IO.Path]::GetFullPath($notesPath)
+
+# Показати чернетку й спинитися. Не змінюється нічого — ні версія, ні коміти, ні теги, ні файли.
+if ($PrepareNotes) {
+    Write-Step 'Чернетка ченджлогу (нічого не змінено)'
+    Write-Host ''
+    Write-Host ('-' * 78) -ForegroundColor DarkGray
+    New-DraftNotes | Write-Host
+    Write-Host ('-' * 78) -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '    Це чернетка — у реліз вона сама собою не піде.'
+    Write-Host '    Реліз бере текст лише звідси:'
+    Write-Host "      $notesPath"
+    Write-Host '    Покласти туди текст може й агент, але ТІЛЬКИ після того, як людина його погодила.'
+    Write-Host "    Далі:  .\publish-release.ps1 -Set $next"
+    exit 0
+}
+
+# --- 3. погоджений текст ченджлогу --------------------------------------------------------------
+
+Write-Step 'Ченджлог'
+
+# Реліз їде ТІЛЬКИ з погодженим текстом, і носій погодження — цей файл. Немає файлу — значить текст
+# ніхто не читав, і публікувати нічого. Автогенерації тут навмисно немає: інакше скрипт сам вигадав
+# би текст і сам же його опублікував, а сенс погодження в тому, що його дає людина.
+if (-not (Test-Path $notesPath)) {
+    throw @"
+Немає погодженого тексту ченджлогу: $notesPath
+
+Спершу склади чернетку й погодь її з людиною:
+    .\publish-release.ps1 -Set $next -PrepareNotes
+потім поклади погоджений текст у цей файл і повтори запуск.
+"@
+}
+
+$notesBody = (Get-Content $notesPath -Raw -Encoding utf8).Trim()
+if (-not $notesBody) { throw "Файл тексту порожній: $notesPath" }
+
+Write-Host ''
+Write-Host ('-' * 78) -ForegroundColor DarkGray
+Write-Host $notesBody
+Write-Host ('-' * 78) -ForegroundColor DarkGray
+Write-Ok "текст узято з $notesPath"
+
+# --- 4. версія в коді --------------------------------------------------------------------------
 
 Write-Step 'Піднімаю версію'
 
+# Без перевірки $LASTEXITCODE: його виставляють лише нативні exe, а виклик .ps1 його не чіпає — тут
+# лишався б код останньої команди, що відпрацювала всередині скрипта, тобто перевірка ні про що.
+# Помилки й так долітають сюди: bump-version.ps1 кидає throw, а $ErrorActionPreference = 'Stop' його
+# не глушить.
 & $bumpScript -Set "$next"
-if ($LASTEXITCODE -ne 0) { throw 'bump-version.ps1 завершився з помилкою' }
 
-# --- 4. тести ----------------------------------------------------------------------------------
+# --- 5. CHANGELOG.md ----------------------------------------------------------------------------
+
+Write-Step 'CHANGELOG.md'
+
+# Накопичувальна історія версій у репозиторії, найсвіжіший розділ зверху. Той самий погоджений текст
+# іде і сюди, і в анотацію тега — тож опис у файлі та в GitHub Release збігається слово в слово.
+$changelogPath = Join-Path $repoRoot 'CHANGELOG.md'
+$section = "## $tag — $(Get-Date -Format 'yyyy-MM-dd')`n`n$notesBody`n"
+
+if (Test-Path $changelogPath) {
+    $existing = Get-Content $changelogPath -Raw -Encoding utf8
+    if ($existing -match ('(?m)^## ' + [regex]::Escape($tag) + '\b')) {
+        Write-Ok "$tag уже є в CHANGELOG.md — пропускаю (повторний запуск тієї ж версії)"
+    }
+    else {
+        # Новий розділ — перед першим наявним «## ». Якщо розділів ще немає, у кінець.
+        $anchor = [regex]::Match($existing, '(?m)^## ')
+        $body = if ($anchor.Success) {
+            $existing.Substring(0, $anchor.Index) + $section + "`n" + $existing.Substring($anchor.Index)
+        }
+        else { $existing.TrimEnd("`r", "`n") + "`n`n" + $section }
+
+        Set-Content -Path $changelogPath -Value (ToCrLf $body) -Encoding utf8 -NoNewline
+        Write-Ok "розділ $tag додано вгорі"
+    }
+}
+else {
+    $header = "# Changelog`n`nІсторія версій KeySwitcher. Складається з комітів при релізі й погоджується перед публікацією.`n`n"
+    Set-Content -Path $changelogPath -Value (ToCrLf ($header + $section)) -Encoding utf8 -NoNewline
+    Write-Ok "CHANGELOG.md створено, розділ $tag"
+}
+
+# --- 6. тести ----------------------------------------------------------------------------------
 
 if ($SkipTests) {
     Write-Step 'Тести пропущено (-SkipTests)'
@@ -153,7 +265,7 @@ else {
     Write-Ok 'тести пройшли'
 }
 
-# --- 5. інсталятор -----------------------------------------------------------------------------
+# --- 7. інсталятор -----------------------------------------------------------------------------
 
 Write-Step 'Інсталятор'
 
@@ -163,8 +275,9 @@ if ($wasRunning) {
     Start-Sleep -Seconds 1
 }
 
+# $LASTEXITCODE тут не перевіряємо — див. коментар про .ps1 вище. build-installer.ps1 сам звіряє коди
+# після dotnet publish і ISCC, а на помилці кидає throw.
 & (Join-Path $repoRoot 'installer\build-installer.ps1')
-if ($LASTEXITCODE -ne 0) { throw 'build-installer.ps1 завершився з помилкою' }
 
 $setup = Get-ChildItem (Join-Path $repoRoot 'installer\out\KeySwitcherSetup-*.exe') | Sort-Object LastWriteTime | Select-Object -Last 1
 if (-not $setup) { throw 'Інсталятор не знайдено в installer\out' }
@@ -177,11 +290,11 @@ if ($wasRunning) {
     Start-Process (Join-Path $env:LOCALAPPDATA 'Programs\KeySwitcher\KeySwitcher.UI.exe') -ErrorAction SilentlyContinue
 }
 
-# --- 6. коміт версії ---------------------------------------------------------------------------
+# --- 8. коміт версії ---------------------------------------------------------------------------
 
 Write-Step 'Коміт версії'
 
-& git -C $repoRoot add Directory.Build.props
+& git -C $repoRoot add Directory.Build.props CHANGELOG.md
 # Порожнього коміту не робимо: після відмови від тексту реліз повторюють тією ж версією (-Set), а тоді
 # bump-version.ps1 уже нічого не міняє — і git commit на незміненому файлі просто впав би.
 if ((& git -C $repoRoot diff --cached --name-only)) {
@@ -193,7 +306,7 @@ else {
     Write-Ok "версію $next уже закомічено раніше (повторний запуск тієї ж версії)"
 }
 
-# --- 7. публічна копія -------------------------------------------------------------------------
+# --- 9. публічна копія -------------------------------------------------------------------------
 
 Write-Step 'Публічна копія'
 
@@ -227,82 +340,17 @@ else {
 if ($LASTEXITCODE -ne 0) { throw 'git push main не вдався' }
 Write-Ok "main оновлено ($((Get-ChildItem $publicPath -Recurse -File | Where-Object { $_.FullName -notmatch '\\\.git\\' } | Measure-Object).Count) файлів)"
 
-# --- 8. release notes: генерація і згода --------------------------------------------------------
-
-Write-Step 'Release notes'
-
-$notesPath = if ($NotesFile) { $NotesFile } else { Join-Path $repoRoot "installer\out\release-notes-$tag.md" }
-# git з -C міняє теку, тож відносний шлях до файлу в його аргументах поїхав би не туди.
-$notesPath = [System.IO.Path]::GetFullPath($notesPath)
-$notesDir = Split-Path $notesPath -Parent
-if ($notesDir -and -not (Test-Path $notesDir)) { New-Item -ItemType Directory -Path $notesDir -Force | Out-Null }
-
-if ((Test-Path $notesPath) -and -not $RegenerateNotes) {
-    Write-Ok "беру текст, збережений раніше: $notesPath (-RegenerateNotes — скласти заново)"
-}
-else {
-    # Джерело тексту — коміти **робочого** репозиторію від попереднього релізу: саме вони описують
-    # зміни людською мовою. Публічна копія для цього не годиться — там кожен реліз це один коміт
-    # «KeySwitcher X.Y.Z». Генератор GitHub теж не помічник: для тега, якого ще не існує, він
-    # віддає самий лише рядок Full Changelog (перевірено), а порядок «спершу тег, потім текст»
-    # суперечив би самій ідеї погодження.
-    $prevTag = & git -C $repoRoot tag --list 'v*' --sort=-v:refname | Select-Object -First 1
-    $range = if ($prevTag) { "$prevTag..HEAD" } else { 'HEAD' }
-
-    $lines = @(& git -C $repoRoot log --no-merges --reverse --pretty='- %s' $range)
-    # Коміт самої версії в списку змін — шум: користувачеві він нічого не каже.
-    $lines = @($lines | Where-Object { $_ -notmatch '^- Версія \d+\.\d+\.\d+$' })
-
-    $compareUrl = if ($prevTag) { "https://github.com/$slug/compare/$prevTag...$tag" }
-    else { "https://github.com/$slug/commits/$tag" }
-
-    $body = (@('## Що змінилося', '') + $lines + @('', "**Повний список змін**: $compareUrl")) -join "`n"
-    Set-Content -Path $notesPath -Value $body -Encoding utf8
-
-    if ($prevTag) { Write-Ok "текст згенеровано від $prevTag — $($lines.Count) пунктів" }
-    else { Write-Ok "текст згенеровано (перший реліз — уся історія): $($lines.Count) пунктів" }
-}
-
-# Тег ставиться тільки з текстом, який прочитала людина: без згоди реліз не публікується.
-#   y — публікувати показаний текст;
-#   e — правити у редакторі (файл лишається на диску, тож після відмови правки не пропадають);
-#   n або Enter — не публікувати нічого.
-$approved = $false
-while (-not $approved) {
-    Write-Host ''
-    Write-Host ('-' * 78) -ForegroundColor DarkGray
-    Get-Content $notesPath -Encoding utf8 | Write-Host
-    Write-Host ('-' * 78) -ForegroundColor DarkGray
-    Write-Host "    файл: $notesPath"
-
-    $answer = Read-Host 'Публікувати цей текст? [y] так / [e] правити / [n] ні'
-
-    switch -Regex ($answer.Trim().ToLowerInvariant()) {
-        '^(y|yes|так|д)$' { $approved = $true }
-        '^(e|edit|ред)$' {
-            $editor = if ($env:VISUAL) { $env:VISUAL } elseif ($env:EDITOR) { $env:EDITOR } else { 'notepad.exe' }
-            & $editor $notesPath
-        }
-        default {
-            Write-Host ''
-            Write-Warning "Реліз не опубліковано: тег $tag не поставлено, Release не створено."
-            Write-Host "    Текст лишився у: $notesPath"
-            Write-Host "    Версія $next уже закомічена, main у публічній копії оновлено — це код, а не реліз."
-            Write-Host "    Доробити текст і повторити:  .\publish-release.ps1 -Set $next"
-            Write-Host "    Скласти текст заново:        .\publish-release.ps1 -Set $next -RegenerateNotes"
-            Write-Host "    Відкотити коміт версії:      git -C `"$repoRoot`" reset --soft HEAD~1"
-            exit 1
-        }
-    }
-}
-
-# --- 9. тег ------------------------------------------------------------------------------------
+# --- 10. тег ------------------------------------------------------------------------------------
 
 Write-Step "Тег $tag"
 
 # Тег анотований, і його анотація — це той самий погоджений текст: workflow кладе в Release саме її
 # (gh release create --notes-file), тож опубліковане слово в слово збігається з погодженим.
-& git -C $publicPath tag -a -F $notesPath $tag
+#
+# --cleanup=verbatim обов'язковий: без нього git чистить повідомлення як коміт і вирізає рядки, що
+# починаються з '#', тобто всі markdown-заголовки. Перевірено живцем на релізі 1.0.1 — у реліз поїхав
+# текст без «## Що нового» і «## Під капотом», хоч у файлі вони були.
+& git -C $publicPath tag -a --cleanup=verbatim -F $notesPath $tag
 if ($LASTEXITCODE -ne 0) { throw 'git tag не вдався' }
 
 & git -C $publicPath push -q origin $tag
@@ -316,7 +364,7 @@ if ($LASTEXITCODE -ne 0) { Write-Warning "Локальний тег $tag не с
 
 if ($NoWait) { Write-Host "`nРеліз створиться за кілька хвилин: https://github.com/$slug/releases/tag/$tag"; return }
 
-# --- 10. чекаємо на реліз ----------------------------------------------------------------------
+# --- 11. чекаємо на реліз ----------------------------------------------------------------------
 
 Write-Step 'Чекаю на GitHub Release (до 10 хвилин)'
 

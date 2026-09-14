@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using KeySwitcher.Core.Native;
+using Serilog;
+using Serilog.Events;
 
 namespace KeySwitcher.Core.Features;
 
@@ -30,6 +32,11 @@ public static class ForegroundProcess
     /// </summary>
     public static string DescribeForeground()
     {
+        // Every caller passes this straight into Log.Debug, and arguments are evaluated before the
+        // call — Serilog only checks the level inside. Without the guard the foreground window is
+        // queried on every replacement even with "detailed logging" off, which is the normal setting.
+        if (!Log.IsEnabled(LogEventLevel.Debug)) return "";
+
         nint hwnd = NativeMethods.GetForegroundWindow();
         Span<char> buffer = stackalloc char[256];
         int length = NativeMethods.GetWindowText(hwnd, buffer, buffer.Length);

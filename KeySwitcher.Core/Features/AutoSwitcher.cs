@@ -59,7 +59,15 @@ public sealed class AutoSwitcher : IDisposable
     public AppSettings Settings
     {
         get => _settings;
-        set => _settings = value;
+        set
+        {
+            _settings = value;
+
+            // The exclusion verdict is cached per window. Without dropping it here, adding the app the
+            // user is typing in right now to the list would only take effect once they switch to
+            // another window and back.
+            _cachedHwnd = nint.Zero;
+        }
     }
 
     public AutoSwitcher(
@@ -106,6 +114,7 @@ public sealed class AutoSwitcher : IDisposable
                     // Focus moved — whatever was buffered no longer matches the text at the caret.
                     _lastInputHwnd = hwnd;
                     _wordBuffer.Invalidate();
+                    ResyncModifiers();
                 }
                 if (IsExcluded(hwnd))
                 {
@@ -146,6 +155,21 @@ public sealed class AutoSwitcher : IDisposable
         Log.Debug("  switch skipped: pause after a cursor key / manual switch");
         return true;
     }
+
+    // The hook never sees key-ups from an elevated window or the secure desktop (UAC prompt,
+    // Ctrl+Alt+Del): Alt+Tab into an elevated app and release Alt there, and _altDown stays true
+    // forever — HandleKeyAsync then bails out on every keystroke and auto-switching is silently dead
+    // until restart. Focus change is the only moment the tracked state can have drifted, so re-read the
+    // physical keys here. Reading them per keystroke instead would be wrong: the consumer runs behind
+    // the hook, so while typing fast GetAsyncKeyState already reports the *next* key's modifiers.
+    private void ResyncModifiers()
+    {
+        _shiftDown = IsPhysicallyDown(0x10); // VK_SHIFT / CONTROL / MENU answer for either side
+        _ctrlDown  = IsPhysicallyDown(0x11);
+        _altDown   = IsPhysicallyDown(0x12);
+    }
+
+    private static bool IsPhysicallyDown(int vk) => (NativeMethods.GetAsyncKeyState(vk) & 0x8000) != 0;
 
     private void TrackModifiers(KeyEvent evt)
     {
