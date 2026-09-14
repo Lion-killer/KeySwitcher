@@ -25,6 +25,7 @@ internal sealed class TrayIconController : IDisposable
     private readonly NotifyIcon _notifyIcon;
 
     private KeyboardLanguage _language = KeyboardLanguage.Unknown;
+    private Action? _balloonClick;
     private bool _disposed;
 
     /// <summary>Raised when the user asks for the settings window (menu item or double click).</summary>
@@ -65,6 +66,13 @@ internal sealed class TrayIconController : IDisposable
             Visible = true
         };
         _notifyIcon.DoubleClick += (_, _) => SettingsRequested?.Invoke();
+        _notifyIcon.BalloonTipClicked += (_, _) =>
+        {
+            // One click, one action: a balloon that was dismissed and clicked later must not fire twice.
+            Action? click = _balloonClick;
+            _balloonClick = null;
+            click?.Invoke();
+        };
     }
 
     /// <summary>Check state of the "Увімкнено" item. Setting it does not raise <see cref="EnabledChanged"/>.</summary>
@@ -94,10 +102,16 @@ internal sealed class TrayIconController : IDisposable
     /// Shows a balloon next to the tray icon. For things the user must know but that should not steal
     /// focus with a dialog — the tray app is a background tool, not a chat partner.
     /// </summary>
-    public void ShowBalloon(string title, string text)
+    /// <param name="onClick">
+    /// Runs on the UI thread when the user clicks the balloon; a balloon has no buttons, so a click is the
+    /// only way to answer one. The action belongs to the balloon shown last — a later balloon (an unrelated
+    /// warning, say) replaces it, and clicking that warning will not fire something the user never saw.
+    /// </param>
+    public void ShowBalloon(string title, string text, Action? onClick = null)
     {
         if (_disposed) return;
 
+        _balloonClick = onClick;
         _notifyIcon.BalloonTipTitle = title;
         _notifyIcon.BalloonTipText = text;
         _notifyIcon.BalloonTipIcon = ToolTipIcon.Info;

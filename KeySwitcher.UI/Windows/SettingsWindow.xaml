@@ -35,7 +35,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TabControl Grid.Row="0" Padding="4">
+        <TabControl x:Name="Tabs" Grid.Row="0" Padding="4">
 
             <TabItem Header="Загальні">
                 <StackPanel Margin="14,12,14,6">
@@ -169,7 +169,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="Словник">
+            <TabItem x:Name="DictionaryTab" Header="Словник">
                 <Grid Margin="14,12,14,10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />

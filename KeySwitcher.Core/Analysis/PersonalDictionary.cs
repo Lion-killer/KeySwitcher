@@ -1,4 +1,5 @@
 using System.IO;
+using KeySwitcher.Core.Layout;
 
 namespace KeySwitcher.Core.Analysis;
 
@@ -66,14 +67,32 @@ public static class PersonalDictionary
 
         foreach (string word in words)
         {
-            // The first letter decides: "Згурський" is Ukrainian even though it has no other markers.
-            char first = word.FirstOrDefault(char.IsLetter);
-            if (first == '\0') continue;
-
-            if (first is >= 'Ѐ' and <= 'ӿ') ukrainian.Add(word);
-            else if (first is >= 'A' and <= 'z') english.Add(word);
+            switch (LanguageOf(word))
+            {
+                case KeyboardLanguage.Ukrainian:
+                    ukrainian.Add(word);
+                    break;
+                case KeyboardLanguage.English:
+                    english.Add(word);
+                    break;
+            }
         }
 
         return (ukrainian, english);
+    }
+
+    /// <summary>
+    /// The language a word belongs to, from its first letter: Cyrillic → Ukrainian, Latin → English.
+    /// <c>null</c> for a word in neither script (digits, punctuation) — such a word would never reach a
+    /// lookup, so there is nothing to add it to.
+    /// </summary>
+    public static KeyboardLanguage? LanguageOf(string word)
+    {
+        // The first letter decides: "Згурський" is Ukrainian even though it has no other markers.
+        char first = word.FirstOrDefault(char.IsLetter);
+
+        if (first is >= 'Ѐ' and <= 'ӿ') return KeyboardLanguage.Ukrainian;
+        if (first is >= 'A' and <= 'z') return KeyboardLanguage.English;
+        return null;
     }
 }

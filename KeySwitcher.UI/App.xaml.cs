@@ -40,6 +40,7 @@ public partial class App : Application
     private WordJudge? _wordJudge;
     private DictionaryAnalyzer? _builtInUkrainian;
     private DictionaryAnalyzer? _builtInEnglish;
+    private ManualSwitchWatchlist? _switchWatchlist;
     private IReadOnlyList<string> _personalWords = [];
     private AppSettings _settings = new();
     private bool _uiErrorShown;
@@ -168,6 +169,10 @@ public partial class App : Application
             _builtInUkrainian.WithExtraWords(personalUkrainian),
             _builtInEnglish.WithExtraWords(personalEnglish));
 
+        // Words the user keeps converting by hand. One that comes back often enough is offered for the
+        // personal dictionary: a word worth adding by hand is usually one the dictionaries are missing.
+        _switchWatchlist = new ManualSwitchWatchlist();
+
         _keyboardHook = new KeyboardHook();
 
         _hotkeyManager = new HotkeyManager();
@@ -276,10 +281,13 @@ public partial class App : Application
         {
             if (id == HotkeyId.ManualSwitch && _manualSwitcher is not null)
             {
-                await _manualSwitcher.SwitchLastWordAsync();
+                string? converted = await _manualSwitcher.SwitchLastWordAsync();
 
                 // The user's own switch stands: pause the auto-switcher for the nearest word (settings).
                 _autoSwitcher?.NotifyManualSwitch();
+
+                // A word fixed by hand keeps coming back until the dictionaries learn it.
+                if (converted is not null) NoteManualSwitch(converted);
             }
             else if (id == HotkeyId.ChangeCase && _caseChanger is not null)
                 await _caseChanger.ChangeCaseAsync();
@@ -292,6 +300,76 @@ public partial class App : Application
         {
             Log.Error(ex, "hotkey {Hotkey} failed", id);
         }
+    }
+
+    /// <summary>
+    /// Counts a word the user converted by hand, and hands it to the offer once it comes back often enough.
+    /// A word the dictionaries already know is skipped: adding it would change nothing, and the counter
+    /// would only grow the file.
+    /// </summary>
+    private void NoteManualSwitch(string word)
+    {
+        if (_switchWatchlist is null || _wordJudge is null) return;
+
+        KeyboardLanguage? language = PersonalDictionary.LanguageOf(word);
+        if (language is null) return;                          // no letters — nothing to add anywhere
+        if (_wordJudge.IsKnown(word, language.Value)) return;  // already in that dictionary
+
+        if (_switchWatchlist.Record(word) is { } frequent)
+            OfferPersonalWord(frequent.Word, frequent.Count);
+    }
+
+    /// <summary>
+    /// Tells the user about a word they keep converting by hand. The balloon is the notification; the
+    /// question itself comes in a dialog after a click — a balloon has no buttons, and putting a word into
+    /// the dictionary behind the user's back would be worse than asking.
+    /// </summary>
+    private void OfferPersonalWord(string word, int count)
+    {
+        Log.Information("manual switch: '{Word}' converted by hand {Count} time(s) — offering the personal dictionary",
+            word, count);
+
+        _trayIcon?.ShowBalloon(
+            "KeySwitcher — додати слово у словник?",
+            $"«{word}» ти перемикаєш клавішею Insert уже {count} разів. " +
+            "Натисни тут, щоб додати його у власний словник.",
+            () => AskAboutPersonalWord(word));
+    }
+
+    private void AskAboutPersonalWord(string word)
+    {
+        // The dictionary tab comes up first: the question is about that list, and seeing it makes the answer
+        // concrete. The dialog is owned by that window, so it cannot end up hidden behind it.
+        OnSettingsRequested();
+        _settingsWindow?.ShowDictionaryTab();
+
+        const string caption = "KeySwitcher";
+        string message =
+            $"Додати «{word}» у власний словник?\n\n" +
+            "Слова зі словника автоперемикач не чіпає — його більше не доведеться перемикати клавішею Insert.";
+
+        MessageBoxResult answer = _settingsWindow is { } window
+            ? MessageBox.Show(window, message, caption, MessageBoxButton.YesNo, MessageBoxImage.Question)
+            : MessageBox.Show(message, caption, MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (answer == MessageBoxResult.Yes) AddPersonalWord(word);
+        else _switchWatchlist?.Decline(word); // a refusal is an answer too: the question must not return
+    }
+
+    /// <summary>
+    /// Adds the word to the list the settings dialog edits and to the running switcher. It applies at once —
+    /// a word added to stop the switcher "fixing" it has to work on the very next word, not after a restart.
+    /// </summary>
+    private void AddPersonalWord(string word)
+    {
+        if (_personalWords.Any(w => string.Equals(w, word, StringComparison.OrdinalIgnoreCase))) return;
+
+        Log.Information("personal dictionary: '{Word}' accepted from the manual-switch suggestion", word);
+        OnPersonalWordsSaved([.. _personalWords, word]);
+        _switchWatchlist?.Forget(word);
+
+        // The dialog may be open on its own copy of the list; without this the word would vanish on save.
+        _settingsWindow?.AddPersonalWord(word);
     }
 
     private void OnLanguageTick(object? sender, EventArgs e)

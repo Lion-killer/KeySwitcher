@@ -178,14 +178,32 @@ public partial class SettingsWindow : Window
 
     private void OnAddPersonalWordClick(object sender, RoutedEventArgs e) => AddPersonalWord();
 
+    /// <summary>
+    /// Switches to the dictionary tab — where a word offered from the tray balloon lands, so the question and
+    /// the list it changes are on screen together.
+    /// </summary>
+    public void ShowDictionaryTab() => Tabs.SelectedItem = DictionaryTab;
+
+    /// <summary>
+    /// Adds a word that came from outside the dialog — the tray balloon offers words the user keeps
+    /// converting by hand. The dialog keeps its own copy of the list, so without this the word would be lost
+    /// the moment the user pressed "Зберегти" here.
+    /// </summary>
+    public void AddPersonalWord(string word)
+    {
+        if (string.IsNullOrWhiteSpace(word)) return;
+
+        // The lookup is case-insensitive, so keeping the list unique is what the user expects to see.
+        if (!_personalWords.Any(w => string.Equals(w, word, StringComparison.OrdinalIgnoreCase)))
+            _personalWords.Add(word);
+    }
+
     private void AddPersonalWord()
     {
         string word = PersonalWordBox.Text.Trim();
         if (word.Length == 0) return;
 
-        // The lookup is case-insensitive, so keeping the list unique is what the user expects to see.
-        if (!_personalWords.Any(w => string.Equals(w, word, StringComparison.OrdinalIgnoreCase)))
-            _personalWords.Add(word);
+        AddPersonalWord(word);
 
         PersonalWordBox.Clear();
         PersonalWordBox.Focus();

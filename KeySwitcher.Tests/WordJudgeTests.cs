@@ -64,6 +64,26 @@ public class WordJudgeTests
         Assert.False(judge.Judge("ghbdtn", KeyboardLanguage.English).ShouldSwitch);
     }
 
+    /// <summary>
+    /// "Is this word already known?" is what keeps the dictionary offer honest: a word the dictionaries
+    /// already hold is never suggested again. Same lists, same answer as the lookup itself.
+    /// </summary>
+    [Fact]
+    public void IsKnown_AnswersPerLanguage_AndCaseInsensitively()
+    {
+        var judge = new WordJudge(
+            LanguageModel.Build(KeyboardLanguage.Ukrainian, ["привіт"]),
+            LanguageModel.Build(KeyboardLanguage.English, ["hello"]),
+            new LayoutConverter(),
+            DictionaryAnalyzer.Create(["привіт"]),
+            DictionaryAnalyzer.Create(["hello"]));
+
+        Assert.True(judge.IsKnown("привіт", KeyboardLanguage.Ukrainian));
+        Assert.True(judge.IsKnown("HELLO", KeyboardLanguage.English));
+        Assert.False(judge.IsKnown("привіт", KeyboardLanguage.English));
+        Assert.False(judge.IsKnown("працює", KeyboardLanguage.Ukrainian));
+    }
+
     // "ghfw.'" is українське "працює" typed with the English layout active: 'ю' lives on '.',
     // 'є' on the apostrophe. Neither the full word nor its parts are in any dictionary.
     [Fact]

@@ -77,7 +77,12 @@ public sealed class ManualSwitcher
     /// Converts the last typed word to the other layout and replaces it in place.
     /// Call from the manual-switch hotkey handler. No-op when the buffer is empty.
     /// </summary>
-    public async Task SwitchLastWordAsync()
+    /// <returns>
+    /// The word left on screen — the converted one — or <c>null</c> when there was nothing to switch.
+    /// The caller counts those words: a word the user converts by hand keeps coming back as a candidate
+    /// for the personal dictionary.
+    /// </returns>
+    public async Task<string?> SwitchLastWordAsync()
     {
         // A single-key switch (Insert) finds the word still in the buffer. A chord hotkey
         // (Ctrl/Alt + key) clears the buffer through the normal key path *before* WM_HOTKEY arrives,
@@ -95,7 +100,7 @@ public sealed class ManualSwitcher
         if (word.Length == 0)
         {
             Log.Debug("  MANUAL: nothing to switch (no word in buffer)");
-            return;
+            return null;
         }
 
         KeyboardLanguage lang = _layoutDetector.GetCurrentLanguage();
@@ -119,5 +124,7 @@ public sealed class ManualSwitcher
         // After the replacement, per the InputSimulator contract — see AutoSwitcher.
         nint hwnd = NativeMethods.GetForegroundWindow();
         await _layoutDetector.SwitchLayoutAsync(hwnd);
+
+        return converted;
     }
 }

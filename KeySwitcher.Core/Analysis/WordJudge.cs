@@ -74,6 +74,12 @@ public sealed class WordJudge(
     public string ConvertToOther(string word, KeyboardLanguage layout) =>
         _converter.Convert(word, DirectionTo(Other(layout)));
 
+    /// <summary>
+    /// Is the word already in the dictionary of the given language? The personal words are part of the
+    /// lookups, so this answers "would adding it to the personal dictionary change anything?"
+    /// </summary>
+    public bool IsKnown(string word, KeyboardLanguage language) => IsWord(word, language);
+
     private bool IsWord(string word, KeyboardLanguage lang) => (lang switch
     {
         KeyboardLanguage.English => _englishDictionary,

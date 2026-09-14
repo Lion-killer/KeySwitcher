@@ -1,4 +1,5 @@
 using KeySwitcher.Core.Analysis;
+using KeySwitcher.Core.Layout;
 
 namespace KeySwitcher.Tests;
 
@@ -101,6 +102,21 @@ public class PersonalDictionaryTests
         Assert.Empty(ukrainian);
         Assert.Empty(english);
     }
+
+    [Theory]
+    [InlineData("Згурський", KeyboardLanguage.Ukrainian)]
+    [InlineData("працює", KeyboardLanguage.Ukrainian)]
+    [InlineData("bilous", KeyboardLanguage.English)]
+    [InlineData("KeySwitcher", KeyboardLanguage.English)]
+    public void LanguageOf_ComesFromTheFirstLetter(string word, KeyboardLanguage expected) =>
+        Assert.Equal(expected, PersonalDictionary.LanguageOf(word));
+
+    [Theory]
+    [InlineData("2026")]
+    [InlineData("...")]
+    [InlineData("")]
+    public void LanguageOf_IsNullForWordsWithNoLetters(string word) =>
+        Assert.Null(PersonalDictionary.LanguageOf(word));
 
     [Fact]
     public void DefaultPath_LivesNextToTheSettings()
