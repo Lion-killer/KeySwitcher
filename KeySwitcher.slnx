@@ -1,5 +1,0 @@
-<Solution>
-  <Project Path="KeySwitcher.Core/KeySwitcher.Core.csproj" />
-  <Project Path="KeySwitcher.Tests/KeySwitcher.Tests.csproj" />
-  <Project Path="KeySwitcher.UI/KeySwitcher.UI.csproj" />
-</Solution>
