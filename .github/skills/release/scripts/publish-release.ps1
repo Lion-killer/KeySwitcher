@@ -269,8 +269,8 @@ else {
 
 Write-Step 'Інсталятор'
 
-$wasRunning = [bool](Get-Process KeySwitcher.UI -ErrorAction SilentlyContinue)
-if ($wasRunning) {
+# Стару версію треба спинити, інакше вона тримає власні файли під час publish.
+if (Get-Process KeySwitcher.UI -ErrorAction SilentlyContinue) {
     Stop-Process -Name KeySwitcher.UI -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
 }
@@ -284,11 +284,11 @@ if (-not $setup) { throw 'Інсталятор не знайдено в installe
 if ($setup.Name -notlike "*$next*") { throw "Інсталятор $($setup.Name) не містить версію $next — перевір Directory.Build.props." }
 Write-Ok "$($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) МБ)"
 
-# Застосунок закривався лише на час збірки — повертаємо його відразу, а не після релізу: далі його
-# ніщо не чіпає, а якщо реліз доведеться відкласти, тулза не лишиться вимкненою на цілу сесію.
-if ($wasRunning) {
-    Start-Process (Join-Path $env:LOCALAPPDATA 'Programs\KeySwitcher\KeySwitcher.UI.exe') -ErrorAction SilentlyContinue
-}
+# Назад застосунок НЕ запускаємо. Одразу після релізу ним ставлять свіжий інсталятор, а працююча
+# тулза тримає власні файли — і встановлення падає на «DeleteFile збій; код 5» (спіймано на 1.0.2).
+# Інсталятор тепер знімає процес сам (installer/KeySwitcher.iss, StopRunningApp), але залишати
+# запущеною стару версію, яку через хвилину перезапишуть, усе одно немає сенсу: нову запустить
+# галочка на останній сторінці майстра.
 
 # --- 8. коміт версії ---------------------------------------------------------------------------
 

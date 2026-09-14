@@ -143,6 +143,26 @@ const
   DesktopRuntimeMajor = '10.0';
   DesktopRuntimeFileName = 'windowsdesktop-runtime.exe';
 
+// Знімаємо працюючий застосунок перед тим, як чіпати його файли.
+//
+// CloseApplications=yes покладається на Restart Manager, а той закриває лише застосунки, які
+// відповідають на запит завершення сеансу. KeySwitcher — фонова тулза: вікна верхнього рівня в неї
+// немає, відповідати нікому, тож RM здається, файли лишаються зайнятими, і встановлення падає на
+// «DeleteFile збій; код 5. Access is denied» (спіймано на оновленні 1.0.1 -> 1.0.2). Оскільки
+// застосунок стартує разом із Windows, під час оновлення він працює майже завжди — тобто це не
+// виняток, а типовий випадок.
+//
+// Код виходу taskkill навмисно не перевіряємо: «процес не знайдено» — теж нормальний результат.
+procedure StopRunningApp();
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/im KeySwitcher.UI.exe /f', '',
+    SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // Дескриптори звільняються не тієї ж миті, коли процес зникає.
+  Sleep(500);
+end;
+
 function InitializeUninstall(): Boolean;
 var
   DataFolder: string;
@@ -162,9 +182,15 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
+  begin
+    // Той самий Restart Manager не закриє фонову тулзу й тут — без цього видалення лишило б
+    // зайняті файли в теці застосунку.
+    StopRunningApp();
+
     // Мертвий шлях у ключі автозапуску не має пережити програму: запис робить застосунок (Run-ключ
     // з'являється, коли ввімкнено autoStart), тому видаляємо безумовно.
     RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'KeySwitcher');
+  end;
 
   if (CurUninstallStep = usPostUninstall) and RemoveUserData then
     DelTree(ExpandConstant('{userappdata}\KeySwitcher'), True, True, True);
@@ -279,6 +305,7 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
   NeedsRestart := False;
+  StopRunningApp();
 #ifdef NeedsDesktopRuntime
   Result := EnsureDesktopRuntime();
 #endif
