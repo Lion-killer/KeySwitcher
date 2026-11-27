@@ -7,6 +7,7 @@ public sealed class WordBuffer
     private readonly StringBuilder _buffer = new();
     private string _recentWord = "";
     private char? _recentDelimiter;
+    private bool _hasDigit;
 
     // Space, Enter, Tab, and punctuation — but NOT apostrophe (Ukrainian: м'яч, п'ять)
     private static readonly HashSet<char> s_delimiters = [' ', '\r', '\n', '\t', '.', ',', '!', '?', ';', ':'];
@@ -16,6 +17,17 @@ public sealed class WordBuffer
     public int Length => _buffer.Length;
 
     public bool IsDelimiter(char c) => s_delimiters.Contains(c);
+
+    /// <summary>
+    /// A digit was typed inside the current word ("x64", "Alt2", "1920x1080"). Digits never reach the
+    /// buffer — they are not letters of either layout — so this flag is the only trace of them, and the
+    /// auto-switcher needs it: a word with a digit is a code, a model or a version, not a word someone
+    /// typed in the wrong layout. Cleared with the word itself.
+    /// </summary>
+    public bool HasDigit => _hasDigit;
+
+    /// <summary>Records a digit typed inside the current word; see <see cref="HasDigit"/>.</summary>
+    public void NoteDigit() => _hasDigit = true;
 
     /// <summary>
     /// Last word dropped by <see cref="Reset"/>, or an empty string. Kept until something proves the
@@ -73,6 +85,7 @@ public sealed class WordBuffer
         }
 
         _buffer.Clear();
+        _hasDigit = false;
     }
 
     /// <summary>
@@ -85,6 +98,7 @@ public sealed class WordBuffer
         _recentWord = word;
         _recentDelimiter = delimiter;
         _buffer.Clear();
+        _hasDigit = false;
     }
 
     /// <summary>
@@ -96,5 +110,6 @@ public sealed class WordBuffer
         _buffer.Clear();
         _recentWord = "";
         _recentDelimiter = null;
+        _hasDigit = false;
     }
 }

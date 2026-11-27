@@ -5,6 +5,22 @@ namespace KeySwitcher.Core.Features;
 
 public sealed class CapsLockFixer
 {
+    /// <summary>
+    /// "USB", "ЗСУ", "IT-шник" is not: at least two letters and every letter a capital. Non-letters do not
+    /// count either way, so "B2B" is one too.
+    /// </summary>
+    public static bool IsAbbreviation(string word)
+    {
+        int letters = 0;
+        foreach (char c in word)
+        {
+            if (!char.IsLetter(c)) continue;
+            if (!char.IsUpper(c)) return false;
+            letters++;
+        }
+        return letters >= 2;
+    }
+
     // Condition: first char is lowercase letter, ≥2 uppercase letters in the rest
     public bool ShouldFix(string word)
     {

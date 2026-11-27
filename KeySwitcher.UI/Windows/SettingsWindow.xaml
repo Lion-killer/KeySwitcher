@@ -2,253 +2,591 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="KeySwitcher — Налаштування"
-        Width="540" SizeToContent="Height"
+        Width="860" Height="570"
         ResizeMode="NoResize" WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI" FontSize="13"
+        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
         Icon="pack://application:,,,/app.ico"
         KeyDown="OnWindowKeyDown">
 
+    <!-- Вигляд у дусі «Параметрів» Windows 11: навігація ліворуч, кожен параметр — картка з перемикачем.
+         Сторінки розраховані так, щоб умістилися без прокрутки: вікно фіксованого розміру, і якщо параметрів
+         стає більше — їм потрібна нова сторінка, а не довша.
+         Кольори — лише системні ресурси теми Fluent (App.ThemeMode="System") і лише через DynamicResource:
+         так вікно саме йде за світлою/темною темою й акцентним кольором Windows, зокрема коли їх змінюють
+         при відкритому вікні. Зашитого кольору тут бути не повинно — у темній темі він випаде. -->
     <Window.Resources>
-        <Style x:Key="HintText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#FF6B6B6B" />
+        <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+        <!-- ===== Навігація ===== -->
+        <Style x:Key="NavTabs" TargetType="TabControl">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Margin="12,18,8,0">
+                                <StackPanel Orientation="Horizontal" Margin="10,0,0,20">
+                                    <Image Source="pack://application:,,,/app.ico" Width="22" Height="22" />
+                                    <TextBlock Text="KeySwitcher" FontSize="15" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                               Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel IsItemsHost="True" KeyboardNavigation.TabNavigation="Once" />
+                            </StackPanel>
+
+                            <ContentPresenter Grid.Column="1" ContentSource="SelectedContent" Margin="16,18,28,0" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Tag — гліф іконки зі шрифту Segoe Fluent Icons. -->
+        <Style TargetType="TabItem">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Bd" CornerRadius="5" Padding="12,9" Margin="0,1" Background="Transparent">
+                            <Grid>
+                                <Border x:Name="Bar" Width="3" Height="16" CornerRadius="1.5" Margin="-12,0,0,0"
+                                        HorizontalAlignment="Left"
+                                        Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                        Visibility="Collapsed" />
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                               FontFamily="{StaticResource IconFont}" FontSize="16"
+                                               VerticalAlignment="Center" Margin="0,0,14,0" />
+                                    <ContentPresenter ContentSource="Header" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                                <Setter TargetName="Bar" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===== Тексти ===== -->
+        <Style x:Key="PageTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+
+        <Style x:Key="PageSubtitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="Margin" Value="26,2,0,14" />
+            <Setter Property="Margin" Value="0,0,0,18" />
         </Style>
 
-        <Style x:Key="OptionBox" TargetType="CheckBox">
-            <Setter Property="Margin" Value="0,10,0,0" />
+        <Style x:Key="CardTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
 
-        <Style x:Key="HotkeyBox" TargetType="TextBox">
+        <Style x:Key="CardHint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+        </Style>
+
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+
+        <!-- ===== Параметр-картка: уся картка — це CheckBox, тож клік будь-де по ній перемикає ===== -->
+        <Style x:Key="ToggleCard" TargetType="CheckBox">
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="Card" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                                CornerRadius="6" Padding="16,11">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter VerticalAlignment="Center" Margin="0,0,20,0" />
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock x:Name="State" Text="Вимк."
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               VerticalAlignment="Center" Margin="0,0,10,0" />
+                                    <Border x:Name="Track" Width="40" Height="20" CornerRadius="10" BorderThickness="1"
+                                            BorderBrush="{DynamicResource ControlStrongStrokeColorDefaultBrush}"
+                                            Background="Transparent">
+                                        <Ellipse x:Name="Thumb" Width="12" Height="12"
+                                                 Fill="{DynamicResource ControlStrongFillColorDefaultBrush}"
+                                                 HorizontalAlignment="Left" Margin="4,0" />
+                                    </Border>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background"
+                                        Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                <Setter TargetName="Track" Property="BorderBrush"
+                                        Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                <Setter TargetName="Thumb" Property="Fill"
+                                        Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Thumb" Property="Width" Value="14" />
+                                <Setter TargetName="Thumb" Property="Height" Value="14" />
+                                <Setter TargetName="Thumb" Property="Margin" Value="3,0" />
+                                <Setter TargetName="State" Property="Text" Value="Увімк." />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card" Property="Background"
+                                        Value="{DynamicResource CardBackgroundFillColorSecondaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Card" Property="BorderBrush"
+                                        Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Card" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Кнопки, поля й списки — стандартні стилі Fluent; тут лише розміри поверх них. -->
+        <Style x:Key="HotkeyBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
             <Setter Property="IsReadOnly" Value="True" />
-            <Setter Property="Width" Value="170" />
-            <Setter Property="Padding" Value="6,3" />
+            <Setter Property="Width" Value="180" />
             <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Cursor" Value="IBeam" />
             <Setter Property="ContextMenu" Value="{x:Null}" />
         </Style>
+
+        <!-- Кнопка-іконка (✕ біля гарячої клавіші). -->
+        <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+
+        <Style x:Key="CardList" TargetType="ListBox" BasedOn="{StaticResource {x:Type ListBox}}">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+
+        <!-- Порожній список показує підказку замість пустого прямокутника. -->
+        <Style x:Key="EmptyHint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="24" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
     </Window.Resources>
 
-    <Grid Margin="16">
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TabControl x:Name="Tabs" Grid.Row="0" Padding="4">
+        <TabControl x:Name="Tabs" Style="{StaticResource NavTabs}" Background="Transparent" BorderThickness="0">
 
-            <TabItem Header="Загальні">
-                <StackPanel Margin="14,12,14,6">
-                    <CheckBox x:Name="AutoSwitchCheck" Style="{StaticResource OptionBox}"
-                              Content="Автоперемикання розкладки" />
-                    <TextBlock Style="{StaticResource HintText}"
-                               Text="Виправляти розкладку автоматично після введення слова." />
+            <!-- ============ Загальні ============ -->
+            <TabItem Header="Загальні" Tag="&#xE713;">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource PageTitle}" Text="Загальні" />
+                    <TextBlock Style="{StaticResource PageSubtitle}"
+                               Text="Що KeySwitcher робить сам, поки ти друкуєш." />
 
-                    <CheckBox x:Name="AutoSwitchLayoutCheck" Style="{StaticResource OptionBox}"
-                              Content="Перемикати розкладку після автозаміни" />
-                    <TextBlock Style="{StaticResource HintText}"
-                               Text="Разом із виправленням слова змінювати системну мову. Вимкни, якщо перемикаєш її сам (Ctrl+Shift)." />
+                    <CheckBox x:Name="AutoSwitchCheck" Style="{StaticResource ToggleCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="Автоперемикання розкладки" />
+                            <TextBlock Style="{StaticResource CardHint}"
+                                       Text="Виправляти слово, набране не тією розкладкою, одразу після його введення." />
+                        </StackPanel>
+                    </CheckBox>
 
-                    <CheckBox x:Name="FixCapsLockCheck" Style="{StaticResource OptionBox}"
-                              Content="Виправляти помилковий CapsLock" />
-                    <TextBlock Style="{StaticResource HintText}"
-                               Text="Інвертувати регістр слова, якщо CapsLock був увімкнений випадково." />
+                    <CheckBox x:Name="AutoSwitchLayoutCheck" Style="{StaticResource ToggleCard}"
+                              IsEnabled="{Binding IsChecked, ElementName=AutoSwitchCheck}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="Перемикати й системну мову" />
+                            <TextBlock Style="{StaticResource CardHint}"
+                                       Text="Разом зі словом змінювати розкладку. Вимкни, якщо перемикаєш її сам (Ctrl+Shift)." />
+                        </StackPanel>
+                    </CheckBox>
 
-                    <CheckBox x:Name="SkipCaretMoveCheck" Style="{StaticResource OptionBox}"
-                              Content="Не автоперемикати після клавіш керування курсором" />
-                    <TextBlock Style="{StaticResource HintText}"
-                               Text="Після ← → ↑ ↓, Home, End, PgUp, PgDn пропустити найближче автоперемикання — у чужому тексті воно може зїсти не ті символи." />
+                    <CheckBox x:Name="FixCapsLockCheck" Style="{StaticResource ToggleCard}"
+                              IsEnabled="{Binding IsChecked, ElementName=AutoSwitchCheck}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="Виправляти випадковий CapsLock" />
+                            <TextBlock Style="{StaticResource CardHint}"
+                                       Text="hELLO → Hello: інвертувати регістр слова і вимкнути CapsLock." />
+                        </StackPanel>
+                    </CheckBox>
 
-                    <CheckBox x:Name="SkipManualSwitchCheck" Style="{StaticResource OptionBox}"
-                              Content="Не автоперемикати після ручного перемикання" />
-                    <TextBlock Style="{StaticResource HintText}"
-                               Text="Після Ins (ручного перемикання слова) або перемикання розкладки самим (Ctrl+Shift, Win+Space) пропустити найближче автоперемикання, щоб програма не сперечалася з твоїм вибором." />
-
-                    <CheckBox x:Name="AutoStartCheck" Style="{StaticResource OptionBox}"
-                              Content="Запускати з Windows" />
-                    <TextBlock Style="{StaticResource HintText}"
-                               Text="Додати KeySwitcher до автозапуску поточного користувача." />
-
-                    <CheckBox x:Name="VerboseLogCheck" Style="{StaticResource OptionBox}"
-                              Content="Детальне логування" />
-                    <TextBlock Style="{StaticResource HintText}"
-                               Text="Писати в debug.log кожне натискання й кожен оброблений символ. Потрібно, коли треба розібрати, чому слово не перемкнулося; вимкнене — лишаються лише рішення й механіка." />
+                    <CheckBox x:Name="AutoStartCheck" Style="{StaticResource ToggleCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="Запускати разом із Windows" />
+                            <TextBlock Style="{StaticResource CardHint}"
+                                       Text="Додати KeySwitcher до автозапуску поточного користувача." />
+                        </StackPanel>
+                    </CheckBox>
                 </StackPanel>
             </TabItem>
 
-            <TabItem Header="Гарячі клавіші">
-                <Grid Margin="14,16,14,10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+            <!-- ============ Коли не перемикати ============ -->
+            <TabItem Header="Коли не перемикати" Tag="&#xE769;">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource PageTitle}" Text="Коли не перемикати" />
+                    <TextBlock Style="{StaticResource PageSubtitle}"
+                               Text="Випадки, де автоперемикання частіше шкодить, ніж допомагає. Діють, лише коли автоперемикання увімкнене." />
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Перемкнути останнє слово"
-                               VerticalAlignment="Center" Margin="0,0,12,10" />
-                    <TextBox x:Name="ManualSwitchBox" Grid.Row="0" Grid.Column="1"
-                             Style="{StaticResource HotkeyBox}" Margin="0,0,8,10"
-                             PreviewKeyDown="OnHotkeyBoxPreviewKeyDown" />
-                    <Button Grid.Row="0" Grid.Column="2" Content="✕" Padding="8,4" Margin="0,0,0,10"
-                            Click="OnClearHotkeyClick" Tag="ManualSwitchBox"
-                            ToolTip="Прибрати комбінацію — гаряча клавіша не діятиме" />
+                    <CheckBox x:Name="SkipDigitsCheck" Style="{StaticResource ToggleCard}"
+                              IsEnabled="{Binding IsChecked, ElementName=AutoSwitchCheck}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="Слова з цифрами" />
+                            <TextBlock Style="{StaticResource CardHint}"
+                                       Text="x64, Win11, 1920x1080 — коди й версії, а не слова, набрані не тією розкладкою." />
+                        </StackPanel>
+                    </CheckBox>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Змінити регістр"
-                               VerticalAlignment="Center" Margin="0,0,12,10" />
-                    <TextBox x:Name="ChangeCaseBox" Grid.Row="1" Grid.Column="1"
-                             Style="{StaticResource HotkeyBox}" Margin="0,0,8,10"
-                             PreviewKeyDown="OnHotkeyBoxPreviewKeyDown" />
-                    <Button Grid.Row="1" Grid.Column="2" Content="✕" Padding="8,4" Margin="0,0,0,10"
-                            Click="OnClearHotkeyClick" Tag="ChangeCaseBox"
-                            ToolTip="Прибрати комбінацію — гаряча клавіша не діятиме" />
+                    <CheckBox x:Name="SkipAbbreviationsCheck" Style="{StaticResource ToggleCard}"
+                              IsEnabled="{Binding IsChecked, ElementName=AutoSwitchCheck}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="Абревіатури" />
+                            <TextBlock Style="{StaticResource CardHint}"
+                                       Text="Слова з двох і більше літер, усі великі: USB, API, ЗСУ." />
+                        </StackPanel>
+                    </CheckBox>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Перемкнути розкладку виділеного"
-                               VerticalAlignment="Center" Margin="0,0,12,10" />
-                    <TextBox x:Name="SelectionLayoutBox" Grid.Row="2" Grid.Column="1"
-                             Style="{StaticResource HotkeyBox}" Margin="0,0,8,10"
-                             PreviewKeyDown="OnHotkeyBoxPreviewKeyDown" />
-                    <Button Grid.Row="2" Grid.Column="2" Content="✕" Padding="8,4" Margin="0,0,0,10"
-                            Click="OnClearHotkeyClick" Tag="SelectionLayoutBox"
-                            ToolTip="Прибрати комбінацію — гаряча клавіша не діятиме" />
+                    <CheckBox x:Name="SkipCaretMoveCheck" Style="{StaticResource ToggleCard}"
+                              IsEnabled="{Binding IsChecked, ElementName=AutoSwitchCheck}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="Після переміщення курсора" />
+                            <TextBlock Style="{StaticResource CardHint}"
+                                       Text="Після ← → ↑ ↓, Home, End, PgUp, PgDn пропустити найближче слово — у чужому тексті заміна може з'їсти не ті символи." />
+                        </StackPanel>
+                    </CheckBox>
 
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Транслітерувати"
-                               VerticalAlignment="Center" Margin="0,0,12,10" />
-                    <TextBox x:Name="TransliterateBox" Grid.Row="3" Grid.Column="1"
-                             Style="{StaticResource HotkeyBox}" Margin="0,0,8,10"
-                             PreviewKeyDown="OnHotkeyBoxPreviewKeyDown" />
-                    <Button Grid.Row="3" Grid.Column="2" Content="✕" Padding="8,4" Margin="0,0,0,10"
-                            Click="OnClearHotkeyClick" Tag="TransliterateBox"
-                            ToolTip="Прибрати комбінацію — гаряча клавіша не діятиме" />
-
-                    <TextBlock Grid.Row="4" Grid.ColumnSpan="3" Style="{StaticResource HintText}"
-                               Margin="0,0,0,0"
-                               Text="Клацніть у поле й натисніть потрібну комбінацію. Esc — повернути попередню. Порожнє поле (✕) — комбінацію вимкнено." />
-                </Grid>
+                    <CheckBox x:Name="SkipManualSwitchCheck" Style="{StaticResource ToggleCard}"
+                              IsEnabled="{Binding IsChecked, ElementName=AutoSwitchCheck}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="Після ручного перемикання" />
+                            <TextBlock Style="{StaticResource CardHint}"
+                                       Text="Після Insert або власного перемикання розкладки (Ctrl+Shift, Win+Space) пропустити найближче слово, щоб не сперечатися з твоїм вибором." />
+                        </StackPanel>
+                    </CheckBox>
+                </StackPanel>
             </TabItem>
 
-            <TabItem Header="Виключення">
-                <Grid Margin="14,12,14,10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+            <!-- ============ Гарячі клавіші ============ -->
+            <TabItem Header="Гарячі клавіші" Tag="&#xE765;">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource PageTitle}" Text="Гарячі клавіші" />
+                    <TextBlock Style="{StaticResource PageSubtitle}"
+                               Text="Клацни в поле й натисни комбінацію. Esc — повернути попередню, ✕ — вимкнути гарячу клавішу." />
 
-                    <TextBlock Grid.Row="0" Margin="0,0,0,8" TextWrapping="Wrap" Foreground="#FF6B6B6B"
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource CardTitle}" Text="Перемкнути останнє слово" />
+                                <TextBlock Style="{StaticResource CardHint}" Text="Слово, яке щойно набрав, — в іншу розкладку." />
+                            </StackPanel>
+                            <TextBox x:Name="ManualSwitchBox" Grid.Column="1" Style="{StaticResource HotkeyBox}"
+                                     Margin="16,0,6,0" PreviewKeyDown="OnHotkeyBoxPreviewKeyDown" />
+                            <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE711;"
+                                    Click="OnClearHotkeyClick" Tag="ManualSwitchBox"
+                                    ToolTip="Прибрати комбінацію — гаряча клавіша не діятиме" />
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource CardTitle}" Text="Змінити регістр" />
+                                <TextBlock Style="{StaticResource CardHint}" Text="маленькі → ВЕЛИКІ → З великої — по колу." />
+                            </StackPanel>
+                            <TextBox x:Name="ChangeCaseBox" Grid.Column="1" Style="{StaticResource HotkeyBox}"
+                                     Margin="16,0,6,0" PreviewKeyDown="OnHotkeyBoxPreviewKeyDown" />
+                            <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE711;"
+                                    Click="OnClearHotkeyClick" Tag="ChangeCaseBox"
+                                    ToolTip="Прибрати комбінацію — гаряча клавіша не діятиме" />
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource CardTitle}" Text="Перемкнути розкладку виділеного" />
+                                <TextBlock Style="{StaticResource CardHint}" Text="Виділений текст — в іншу розкладку; без виділення — останнє слово." />
+                            </StackPanel>
+                            <TextBox x:Name="SelectionLayoutBox" Grid.Column="1" Style="{StaticResource HotkeyBox}"
+                                     Margin="16,0,6,0" PreviewKeyDown="OnHotkeyBoxPreviewKeyDown" />
+                            <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE711;"
+                                    Click="OnClearHotkeyClick" Tag="SelectionLayoutBox"
+                                    ToolTip="Прибрати комбінацію — гаряча клавіша не діятиме" />
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource CardTitle}" Text="Транслітерувати" />
+                                <TextBlock Style="{StaticResource CardHint}" Text="Кирилицю — латиницею за правилами КМУ: Київ → Kyiv." />
+                            </StackPanel>
+                            <TextBox x:Name="TransliterateBox" Grid.Column="1" Style="{StaticResource HotkeyBox}"
+                                     Margin="16,0,6,0" PreviewKeyDown="OnHotkeyBoxPreviewKeyDown" />
+                            <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE711;"
+                                    Click="OnClearHotkeyClick" Tag="TransliterateBox"
+                                    ToolTip="Прибрати комбінацію — гаряча клавіша не діятиме" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </TabItem>
+
+            <!-- ============ Виключення ============ -->
+            <TabItem Header="Виключення" Tag="&#xE733;">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource PageTitle}" Text="Виключення" />
+                    <TextBlock Style="{StaticResource PageSubtitle}"
                                Text="У цих програмах KeySwitcher не втручається. Порівняння йде за назвою .exe." />
 
-                    <ListView x:Name="ExclusionsList" Grid.Row="1" Height="150" SelectionMode="Single">
-                        <ListView.View>
-                            <GridView>
-                                <GridViewColumn Header="Програма" Width="340" DisplayMemberBinding="{Binding}" />
-                            </GridView>
-                        </ListView.View>
-                    </ListView>
+                    <Border Style="{StaticResource Card}" Padding="12,10">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="Додати з відкритих вікон" Margin="4,0,0,8" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="OpenWindowsBox" DisplayMemberPath="Display"
+                                          DropDownOpened="OnOpenWindowsDropDownOpened"
+                                          SelectionChanged="OnOpenWindowSelected"
+                                          ToolTip="Вибери програму — вона одразу додасться до виключень. Список оновлюється при кожному відкритті." />
+                                <Button Grid.Column="1" Content="Вибрати файл..." Click="OnAddExclusionFileClick"
+                                        Margin="8,0,0,0" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
 
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
-                        <TextBlock Text="Відкриті вікна:" VerticalAlignment="Center" Margin="0,0,8,0" />
-                        <ComboBox x:Name="OpenWindowsBox" Width="330" DisplayMemberPath="Display"
-                                  DropDownOpened="OnOpenWindowsDropDownOpened"
-                                  SelectionChanged="OnOpenWindowSelected"
-                                  ToolTip="Виберіть програму зі списку — вона додасться до виключень. Список оновлюється при відкритті." />
-                    </StackPanel>
+                    <Border Style="{StaticResource Card}" Padding="6" Height="200">
+                        <Grid>
+                            <ListBox x:Name="ExclusionsList" Style="{StaticResource CardList}" SelectionMode="Single" />
+                            <TextBlock Text="Виключень немає — KeySwitcher працює в усіх програмах.">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource EmptyHint}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasItems, ElementName=ExclusionsList}" Value="False">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
 
-                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="Додати файл..." Click="OnAddExclusionFileClick"
-                                Padding="10,4" Margin="0,0,8,0" />
-                        <Button Content="Видалити" Click="OnRemoveExclusionClick" Padding="10,4" />
-                    </StackPanel>
-                </Grid>
+                    <Button Content="Видалити вибране" Click="OnRemoveExclusionClick" HorizontalAlignment="Left"
+ />
+                </StackPanel>
             </TabItem>
 
-            <TabItem x:Name="DictionaryTab" Header="Словник">
-                <Grid Margin="14,12,14,10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+            <!-- ============ Словник ============ -->
+            <TabItem x:Name="DictionaryTab" Header="Словник" Tag="&#xE82D;">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource PageTitle}" Text="Власний словник" />
+                    <TextBlock Style="{StaticResource PageSubtitle}"
+                               Text="Слова, які автоперемикач не чіпає: імена, назви, терміни. Сюди ж потрапляють слова, які ти раз-по-раз виправляєш після KeySwitcher." />
 
-                    <TextBlock Grid.Row="0" Margin="0,0,0,8" TextWrapping="Wrap" Foreground="#FF6B6B6B"
-                               Text="Власні слова, які автоперемикач не чіпає: імена, назви, терміни. Зберігаються у custom-words.txt, по одному в рядку; кирилиця йде в український словник, латиниця — в англійський." />
+                    <Border Style="{StaticResource Card}" Padding="12,10">
+                        <StackPanel>
+                        <TextBlock Style="{StaticResource CardTitle}" Text="Додати слово" Margin="4,0,0,8" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="PersonalWordBox" KeyDown="OnPersonalWordKeyDown"
+                                     ToolTip="Введи слово й натисни Enter або «Додати». Кирилиця йде в український словник, латиниця — в англійський." />
+                            <Button Grid.Column="1" Content="Додати" Click="OnAddPersonalWordClick" Margin="8,0,0,0" />
+                        </Grid>
+                        </StackPanel>
+                    </Border>
 
-                    <ListView x:Name="PersonalWordsList" Grid.Row="1" Height="150" SelectionMode="Single">
-                        <ListView.View>
-                            <GridView>
-                                <GridViewColumn Header="Слово" Width="340" DisplayMemberBinding="{Binding}" />
-                            </GridView>
-                        </ListView.View>
-                    </ListView>
+                    <Border Style="{StaticResource Card}" Padding="6" Height="200">
+                        <Grid>
+                            <ListBox x:Name="PersonalWordsList" Style="{StaticResource CardList}" SelectionMode="Single" />
+                            <TextBlock Text="Словник порожній. Додай слово вище — або KeySwitcher додасть сам те, що ти часто виправляєш.">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource EmptyHint}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasItems, ElementName=PersonalWordsList}" Value="False">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
 
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
-                        <TextBox x:Name="PersonalWordBox" Width="330" Padding="6,3" VerticalContentAlignment="Center"
-                                 KeyDown="OnPersonalWordKeyDown"
-                                 ToolTip="Введіть слово і натисніть Enter або «Додати»." />
-                    </StackPanel>
-
-                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="Додати" Click="OnAddPersonalWordClick" Padding="10,4" Margin="0,0,8,0" />
-                        <Button Content="Видалити" Click="OnRemovePersonalWordClick" Padding="10,4" />
-                    </StackPanel>
-                </Grid>
+                    <Button Content="Видалити вибране" Click="OnRemovePersonalWordClick" HorizontalAlignment="Left"
+ />
+                </StackPanel>
             </TabItem>
 
-            <TabItem Header="Автозаміна">
-                <Grid Margin="14,12,14,10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Margin="0,0,0,8" TextWrapping="Wrap" Foreground="#FF6B6B6B"
+            <!-- ============ Автозаміна ============ -->
+            <TabItem Header="Автозаміна" Tag="&#xE8AC;">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource PageTitle}" Text="Автозаміна" />
+                    <TextBlock Style="{StaticResource PageSubtitle}"
                                Text="Скорочення замінюється повним текстом після пробілу, Tab або Enter. Рядки редагуються прямо в таблиці." />
 
-                    <DataGrid x:Name="AutoReplaceGrid" Grid.Row="1" Height="150"
-                              AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
-                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                              SelectionMode="Single">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Скорочення" Binding="{Binding Shortcut}" Width="140" />
-                            <DataGridTextColumn Header="Заміна" Binding="{Binding Replacement}" Width="*" />
-                        </DataGrid.Columns>
-                    </DataGrid>
+                    <Border Style="{StaticResource Card}" Padding="1" Height="270">
+                        <Grid>
+                            <DataGrid x:Name="AutoReplaceGrid"
+                                      AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                                      HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                                      BorderThickness="0" Background="Transparent"
+                                      RowHeight="30" SelectionMode="Single">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Скорочення" Binding="{Binding Shortcut}" Width="160" />
+                                    <DataGridTextColumn Header="Заміна" Binding="{Binding Replacement}" Width="*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <TextBlock Text="Скорочень немає. Натисни «Додати», щоб створити перше — наприклад, «нп» → «наприклад».">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource EmptyHint}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasItems, ElementName=AutoReplaceGrid}" Value="False">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
 
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="Додати" Click="OnAddAutoReplaceClick" Padding="10,4" Margin="0,0,8,0" />
-                        <Button Content="Видалити" Click="OnRemoveAutoReplaceClick" Padding="10,4" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Додати" Click="OnAddAutoReplaceClick" Margin="0,0,8,0" />
+                        <Button Content="Видалити вибране" Click="OnRemoveAutoReplaceClick"
+ />
                     </StackPanel>
-                </Grid>
+                </StackPanel>
             </TabItem>
-            <TabItem Header="Інше">
-                <StackPanel Margin="14,12,14,10">
-                    <TextBlock TextWrapping="Wrap" Foreground="#FF6B6B6B"
-                               Text="Налаштування лежать у %AppData%\KeySwitcher\settings.json, власні слова — окремим файлом custom-words.txt поряд." />
 
-                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                        <Button Content="Експортувати..." Click="OnExportClick" Padding="10,4" Margin="0,0,8,0" />
-                        <Button Content="Імпортувати..." Click="OnImportClick" Padding="10,4" />
-                    </StackPanel>
+            <!-- ============ Інше ============ -->
+            <TabItem Header="Інше" Tag="&#xE712;">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource PageTitle}" Text="Інше" />
+                    <TextBlock Style="{StaticResource PageSubtitle}"
+                               Text="Перенесення налаштувань і діагностика." />
 
-                    <TextBlock Style="{StaticResource HintText}" Margin="0,10,0,0"
-                               Text="Експорт зберігає те, що зараз у вікні. Після імпорту перевірте значення — вони застосуються після «Зберегти»." />
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Style="{StaticResource CardTitle}" Text="Експорт та імпорт" />
+                                <TextBlock Style="{StaticResource CardHint}"
+                                           Text="Експорт зберігає те, що зараз у вікні. Імпортоване застосується після «Зберегти». Власні слова не входять — вони в custom-words.txt." />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="Експортувати..." Click="OnExportClick" Margin="0,0,8,0" />
+                                <Button Content="Імпортувати..." Click="OnImportClick" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <CheckBox x:Name="VerboseLogCheck" Style="{StaticResource ToggleCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="Детальне логування" />
+                            <TextBlock Style="{StaticResource CardHint}"
+                                       Text="Писати в debug.log кожне натискання. Потрібно, щоб розібрати, чому слово не перемкнулося; вимкнене — лишаються тільки рішення." />
+                        </StackPanel>
+                    </CheckBox>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="Де лежать файли" />
+                            <TextBlock Style="{StaticResource CardHint}"
+                                       Text="%AppData%\KeySwitcher — settings.json (налаштування), custom-words.txt (власні слова), debug.log і error.log (журнали)." />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </TabItem>
         </TabControl>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
-            <Button Content="Зберегти" Click="OnSaveClick" IsDefault="True"
-                    MinWidth="100" Padding="10,4" Margin="0,0,8,0" />
-            <Button Content="Скасувати" Click="OnCancelClick" MinWidth="100" Padding="10,4" />
-        </StackPanel>
+        <Border Grid.Row="1" Background="{DynamicResource LayerFillColorDefaultBrush}" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="24,14">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Зберегти" Style="{DynamicResource AccentButtonStyle}" Click="OnSaveClick" IsDefault="True"
+                        MinWidth="110" Margin="0,0,8,0" />
+                <Button Content="Скасувати" Click="OnCancelClick" MinWidth="110" />
+            </StackPanel>
+        </Border>
     </Grid>
 </Window>

@@ -53,7 +53,9 @@ public sealed class AutoSwitchGuard
     /// <summary>
     /// Reports the layout read while handling a keystroke in <paramref name="hwnd"/> and arms the pause
     /// when the change is the user's own doing (<paramref name="pauseEnabled"/> mirrors the setting).
-    /// Returns true when the pause was armed.
+    /// Returns true when the user switched the layout themselves — whether or not the pause was armed:
+    /// the caller also learns from that fact (an automatic switch the user undoes was a wrong one), and
+    /// that must keep working for someone who turned the pause off.
     /// </summary>
     public bool ObserveLayout(KeyboardLanguage language, nint hwnd, bool pauseEnabled)
     {
@@ -78,9 +80,7 @@ public sealed class AutoSwitchGuard
             return false;
         }
 
-        if (!pauseEnabled) return false;
-
-        Suppress();
+        if (pauseEnabled) Suppress();
         return true;
     }
 }

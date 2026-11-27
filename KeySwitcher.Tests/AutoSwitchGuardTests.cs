@@ -131,12 +131,13 @@ public class AutoSwitchGuardTests
     }
 
     [Fact]
-    public void LayoutChange_WithThePauseDisabled_DoesNotSuppress()
+    public void LayoutChange_WithThePauseDisabled_IsReportedButDoesNotSuppress()
     {
         var guard = new AutoSwitchGuard();
         guard.ObserveLayout(KeyboardLanguage.English, HWND, pauseEnabled: false);
 
-        Assert.False(guard.ObserveLayout(KeyboardLanguage.Ukrainian, HWND, pauseEnabled: false));
+        // Still reported: an undone automatic switch must be learned from even with the pause off.
+        Assert.True(guard.ObserveLayout(KeyboardLanguage.Ukrainian, HWND, pauseEnabled: false));
         Assert.False(guard.IsSuppressed);
     }
 

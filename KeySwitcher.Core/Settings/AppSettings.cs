@@ -13,6 +13,12 @@ public sealed record AppSettings
     /// <summary>Skip the next automatic switch after the user switched the layout by hand (the manual hotkey).</summary>
     public bool SkipSwitchAfterManualSwitch { get; init; } = true;
 
+    /// <summary>Never auto-switch a word with a digit in it ("x64", "Win11") — a code, not a layout mistake.</summary>
+    public bool SkipWordsWithDigits { get; init; } = true;
+
+    /// <summary>Never auto-switch an abbreviation — a word of ≥ 2 letters, all of them capital ("USB", "ЗСУ").</summary>
+    public bool SkipAbbreviations { get; init; } = true;
+
     /// <summary>
     /// Trace every keystroke into debug.log (the Verbose level). On by default while the auto-switcher is
     /// still being tuned: it is what turns "the word was not switched" into a readable cause. Raise it to

@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- ThemeMode (тема Fluent, що йде за світлою/темною темою й акцентом Windows) у .NET 10 ще
+         позначена як експериментальна; іншого вбудованого способу слідувати темі системи у WPF немає. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>

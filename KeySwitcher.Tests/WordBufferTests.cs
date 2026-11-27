@@ -268,4 +268,21 @@ public class WordBufferTests
         var buf = Build("hello world");
         Assert.Equal("world", buf.CurrentWord);
     }
+
+    [Fact]
+    public void HasDigit_LastsUntilTheWordEnds()
+    {
+        var buffer = new WordBuffer();
+        buffer.Add('x');
+        buffer.NoteDigit();
+        buffer.Add('a');
+        Assert.True(buffer.HasDigit);
+
+        buffer.Add(' '); // delimiter ends the word
+        Assert.False(buffer.HasDigit);
+
+        buffer.NoteDigit();
+        buffer.Invalidate();
+        Assert.False(buffer.HasDigit);
+    }
 }

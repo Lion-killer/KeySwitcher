@@ -55,6 +55,8 @@ public partial class SettingsWindow : Window
         FixCapsLockCheck.IsChecked = settings.FixCapsLock;
         SkipCaretMoveCheck.IsChecked = settings.SkipSwitchAfterCaretMove;
         SkipManualSwitchCheck.IsChecked = settings.SkipSwitchAfterManualSwitch;
+        SkipDigitsCheck.IsChecked = settings.SkipWordsWithDigits;
+        SkipAbbreviationsCheck.IsChecked = settings.SkipAbbreviations;
         AutoStartCheck.IsChecked = settings.AutoStart;
         VerboseLogCheck.IsChecked = settings.VerboseLog;
 
@@ -79,6 +81,8 @@ public partial class SettingsWindow : Window
         FixCapsLock = FixCapsLockCheck.IsChecked == true,
         SkipSwitchAfterCaretMove = SkipCaretMoveCheck.IsChecked == true,
         SkipSwitchAfterManualSwitch = SkipManualSwitchCheck.IsChecked == true,
+        SkipWordsWithDigits = SkipDigitsCheck.IsChecked == true,
+        SkipAbbreviations = SkipAbbreviationsCheck.IsChecked == true,
         AutoStart = AutoStartCheck.IsChecked == true,
         VerboseLog = VerboseLogCheck.IsChecked == true,
         Hotkeys = _original.Hotkeys with
@@ -196,6 +200,13 @@ public partial class SettingsWindow : Window
         // The lookup is case-insensitive, so keeping the list unique is what the user expects to see.
         if (!_personalWords.Any(w => string.Equals(w, word, StringComparison.OrdinalIgnoreCase)))
             _personalWords.Add(word);
+    }
+
+    /// <summary>The counterpart of <see cref="AddPersonalWord(string)"/>: the user took a learned word back.</summary>
+    public void RemovePersonalWord(string word)
+    {
+        string? existing = _personalWords.FirstOrDefault(w => string.Equals(w, word, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null) _personalWords.Remove(existing);
     }
 
     private void AddPersonalWord()

@@ -169,4 +169,14 @@ public class CapsLockFixerTests
         const string original = "hELLO wORLD";
         Assert.Equal(original, _fixer.InvertCase(_fixer.InvertCase(original)));
     }
+
+    [Theory]
+    [InlineData("USB", true)]
+    [InlineData("ЗСУ", true)]
+    [InlineData("B2B", true)]
+    [InlineData("A", false)]      // one letter — a capitalised word start, not an abbreviation
+    [InlineData("Ghbdsn", false)]
+    [InlineData("IT-шник", false)]
+    public void IsAbbreviation(string word, bool expected) =>
+        Assert.Equal(expected, CapsLockFixer.IsAbbreviation(word));
 }

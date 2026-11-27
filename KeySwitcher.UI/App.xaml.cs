@@ -187,6 +187,11 @@ public partial class App : Application
         };
         _autoSwitcher.LanguageChanged += UpdateTrayLanguage;
 
+        // A switch the user undoes is the same lesson as a word they fix with Insert: leave it alone. Both
+        // go into one watchlist. The event comes from the hook consumer thread; the watchlist and the
+        // balloon belong to the UI thread.
+        _autoSwitcher.AutoSwitchRejected += word => Dispatcher.BeginInvoke(() => NoteManualSwitch(word));
+
         _manualSwitcher = new ManualSwitcher(wordBuffer, _layoutDetector, layoutConverter, _wordJudge, inputSimulator);
         _caseChanger = new CaseChanger(wordBuffer, inputSimulator);
         _transliterator = new Transliterator(wordBuffer, inputSimulator);
@@ -316,27 +321,28 @@ public partial class App : Application
         if (_wordJudge.IsKnown(word, language.Value)) return;  // already in that dictionary
 
         if (_switchWatchlist.Record(word) is { } frequent)
-            OfferPersonalWord(frequent.Word, frequent.Count);
+            LearnPersonalWord(frequent.Word, frequent.Count);
     }
 
     /// <summary>
-    /// Tells the user about a word they keep converting by hand. The balloon is the notification; the
-    /// question itself comes in a dialog after a click — a balloon has no buttons, and putting a word into
-    /// the dictionary behind the user's back would be worse than asking.
+    /// A word the user keeps correcting — converting by hand with Insert, or switching the layout back right
+    /// after KeySwitcher switched it — goes into the personal dictionary at once: the correction itself is
+    /// the answer, and asking first would leave the word to be "fixed" again until the user gets to it.
+    /// The balloon reports it; a click on it lets the user keep the word or take it back.
     /// </summary>
-    private void OfferPersonalWord(string word, int count)
+    private void LearnPersonalWord(string word, int count)
     {
-        Log.Information("manual switch: '{Word}' converted by hand {Count} time(s) — offering the personal dictionary",
-            word, count);
+        Log.Information("learning: '{Word}' corrected {Count} time(s) — added to the personal dictionary", word, count);
+        AddPersonalWord(word);
 
         _trayIcon?.ShowBalloon(
-            "KeySwitcher — додати слово у словник?",
-            $"«{word}» ти перемикаєш клавішею Insert уже {count} разів. " +
-            "Натисни тут, щоб додати його у власний словник.",
-            () => AskAboutPersonalWord(word));
+            "KeySwitcher — слово додано у словник",
+            $"«{word}» ти виправляв уже {count} разів, тож KeySwitcher більше його не перемикатиме. " +
+            "Натисни тут, щоб підтвердити або скасувати.",
+            () => ConfirmPersonalWord(word));
     }
 
-    private void AskAboutPersonalWord(string word)
+    private void ConfirmPersonalWord(string word)
     {
         // The dictionary tab comes up first: the question is about that list, and seeing it makes the answer
         // concrete. The dialog is owned by that window, so it cannot end up hidden behind it.
@@ -345,15 +351,24 @@ public partial class App : Application
 
         const string caption = "KeySwitcher";
         string message =
-            $"Додати «{word}» у власний словник?\n\n" +
-            "Слова зі словника автоперемикач не чіпає — його більше не доведеться перемикати клавішею Insert.";
+            $"«{word}» додано у власний словник — автоперемикач його більше не чіпає.\n\n" +
+            "Залишити? «Ні» прибере слово зі словника.";
 
         MessageBoxResult answer = _settingsWindow is { } window
             ? MessageBox.Show(window, message, caption, MessageBoxButton.YesNo, MessageBoxImage.Question)
             : MessageBox.Show(message, caption, MessageBoxButton.YesNo, MessageBoxImage.Question);
 
-        if (answer == MessageBoxResult.Yes) AddPersonalWord(word);
-        else _switchWatchlist?.Decline(word); // a refusal is an answer too: the question must not return
+        if (answer == MessageBoxResult.Yes) return;
+
+        RemovePersonalWord(word);
+        _switchWatchlist?.Decline(word); // a refusal is an answer too: the word must not be learned again
+    }
+
+    private void RemovePersonalWord(string word)
+    {
+        Log.Information("personal dictionary: '{Word}' taken back by the user", word);
+        OnPersonalWordsSaved([.. _personalWords.Where(w => !string.Equals(w, word, StringComparison.OrdinalIgnoreCase))]);
+        _settingsWindow?.RemovePersonalWord(word);
     }
 
     /// <summary>
@@ -364,7 +379,7 @@ public partial class App : Application
     {
         if (_personalWords.Any(w => string.Equals(w, word, StringComparison.OrdinalIgnoreCase))) return;
 
-        Log.Information("personal dictionary: '{Word}' accepted from the manual-switch suggestion", word);
+        Log.Information("personal dictionary: '{Word}' added", word);
         OnPersonalWordsSaved([.. _personalWords, word]);
         _switchWatchlist?.Forget(word);
 

@@ -47,6 +47,14 @@ public sealed class AutoSwitcher : IDisposable
     private bool _altDown;
     private nint _lastInputHwnd;
 
+    // Last word this app switched automatically, as the user typed it — the spelling that has to stop
+    // being "fixed" if the switch turns out to be unwanted. See NoteAutoSwitchRejected.
+    private string? _lastAutoSwitchedWord;
+    private long _lastAutoSwitchAt;
+
+    /// <summary>How long after an automatic switch the user's own layout switch still reads as "wrong".</summary>
+    private const long RejectWindowMs = 5000;
+
     public bool IsEnabled { get; set; } = true;
 
     /// <summary>
@@ -55,6 +63,14 @@ public sealed class AutoSwitcher : IDisposable
     /// is no need to inspect every keystroke for them.
     /// </summary>
     public event Action? LanguageChanged;
+
+    /// <summary>
+    /// Raised when an automatic switch turned out to be wrong: the user undid it by switching the layout
+    /// back within <see cref="RejectWindowMs"/>. Carries the word <b>as the user typed it</b> — putting
+    /// that spelling into the personal dictionary is what stops the switcher from touching it again.
+    /// </summary>
+    /// <remarks>Raised from the hook consumer thread — the handler must marshal to the UI thread itself.</remarks>
+    public event Action<string>? AutoSwitchRejected;
 
     public AppSettings Settings
     {
@@ -192,6 +208,55 @@ public sealed class AutoSwitcher : IDisposable
             or 0x1B                 // Escape
             or 0x2E;                // Delete
 
+    /// <summary>
+    /// The word is one the user asked never to switch (settings): it holds a digit or is an abbreviation.
+    /// Such words look foreign to the statistics by nature — "x64", "USB" — but are typed on purpose.
+    /// </summary>
+    private bool IsProtected(string word)
+    {
+        string? reason =
+            _settings.SkipWordsWithDigits && _wordBuffer.HasDigit ? "has a digit" :
+            _settings.SkipAbbreviations && CapsLockFixer.IsAbbreviation(word) ? "abbreviation" :
+            null;
+
+        if (reason is null) return false;
+        Log.Debug("  no switch: '{Word}' — {Reason}", word, reason);
+        return true;
+    }
+
+    // Top-row digits (Shift turns them into !@# — not digits any more) and the numeric keypad.
+    private bool IsDigitKey(int vk) =>
+        (vk is >= 0x30 and <= 0x39 && !_shiftDown) || vk is >= 0x60 and <= 0x69;
+
+    /// <summary>
+    /// Remembers an automatic switch, so that the user switching the layout back right away can be read
+    /// as "that switch was wrong" (<see cref="AutoSwitchRejected"/>).
+    /// </summary>
+    private void RememberAutoSwitch(string word)
+    {
+        _lastAutoSwitchedWord = word;
+        _lastAutoSwitchAt = Environment.TickCount64;
+    }
+
+    /// <summary>
+    /// The user switched the layout themselves. When that happens right after an automatic switch, it is
+    /// the user undoing it — the one signal that says the switcher was wrong about that word.
+    /// </summary>
+    /// <remarks>
+    /// A time window, not "the very next keystroke": the user first sees the wrong word, then reaches for
+    /// Ctrl+Shift, and that pause is theirs, not the keyboard's. The memory is one-shot either way — a
+    /// layout switch much later is an ordinary switch and says nothing about the word.
+    /// </remarks>
+    private void NoteAutoSwitchRejected()
+    {
+        string? word = _lastAutoSwitchedWord;
+        _lastAutoSwitchedWord = null;
+        if (word is null || Environment.TickCount64 - _lastAutoSwitchAt > RejectWindowMs) return;
+
+        Log.Debug("  auto-switch of '{Word}' undone by the user — counted as a wrong switch", word);
+        AutoSwitchRejected?.Invoke(word);
+    }
+
     private async Task HandleKeyAsync(int vk, nint hwnd)
     {
         if (_ctrlDown || _altDown)
@@ -224,7 +289,18 @@ public sealed class AutoSwitcher : IDisposable
         // the new layout: the shell never reports it, so the layout read per keystroke is the only
         // reliable source. Our own switches are marked and therefore not mistaken for the user's.
         if (_guard.ObserveLayout(lang, hwnd, _settings.SkipSwitchAfterManualSwitch))
-            Log.Debug("  user switched the layout: next automatic switch is paused");
+        {
+            Log.Debug("  user switched the layout themselves (pause={Paused})", _settings.SkipSwitchAfterManualSwitch);
+            NoteAutoSwitchRejected();
+        }
+
+        if (IsDigitKey(vk))
+        {
+            // Digits are letters of neither layout, so they never enter the buffer — but the word they
+            // belong to must not be switched, hence the flag.
+            _wordBuffer.NoteDigit();
+            return;
+        }
 
         char? ch = VkToChar(vk, lang);
         Log.Verbose("  handle vk=0x{Vk:X2} lang={Lang} ch='{Char}' buffer='{Buffer}'",
@@ -260,6 +336,7 @@ public sealed class AutoSwitcher : IDisposable
             // Immediate switch: mixed Unicode blocks (100% wrong layout) or char impossible for language
             if ((_charsetAnalyzer.HasMixedUnicodeBlocks(word) ||
                  _charsetAnalyzer.IsDefinitelyWrongLanguage(ch.Value, lang)) &&
+                !IsProtected(word) &&
                 !ConsumeSuppression())
             {
                 _wordBuffer.Reset();
@@ -318,9 +395,12 @@ public sealed class AutoSwitcher : IDisposable
 
         if (!judgement.ShouldSwitch || paused) return false;
 
+        if (IsProtected(word)) return false;
+
         Log.Debug("  SWITCH(delim) '{Word}'->'{Converted}' byStatistics={ByStatistics} fg={Foreground}",
             word, judgement.Converted, judgement.ByStatistics, ForegroundProcess.DescribeForeground());
         await _inputSimulator.ReplaceWordKeepingDelimiterAsync(word, judgement.Converted, delimiter);
+        RememberAutoSwitch(word);
 
         // Layout switch strictly AFTER the replacement (InputSimulator contract): Ctrl+V is injected
         // as VK codes, so switching first makes a Ukrainian layout type 'м' instead of pasting.
@@ -356,6 +436,7 @@ public sealed class AutoSwitcher : IDisposable
         Log.Debug("  SWITCH(immediate) '{Word}'->'{Replacement}' fg={Foreground}",
             word, replacement, ForegroundProcess.DescribeForeground());
         await _inputSimulator.ReplaceLastWordAsync(word, replacement);
+        RememberAutoSwitch(word);
 
         // After, not before — see CheckWordOnDelimiterAsync.
         if (_settings.AutoSwitchLayout)
