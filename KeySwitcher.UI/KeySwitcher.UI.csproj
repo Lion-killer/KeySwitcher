@@ -5,7 +5,9 @@
          позначена як експериментальна; іншого вбудованого способу слідувати темі системи у WPF немає. -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Версія Windows SDK потрібна для toast-сповіщень (Microsoft.Toolkit.Uwp.Notifications): старий
+         балон NotifyIcon не відрізняє клік від ✕ і зникає безслідно в режимі «Не турбувати». -->
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <!-- Windows показує користувачеві саме FileDescription: у списку піктограм області сповіщень, у
          диспетчері задач, у властивостях файлу. Без цих двох рядків туди їде ім'я збірки —
@@ -42,6 +44,7 @@
     <Using Remove="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
     <PackageReference Include="Serilog" Version="4.4.0" />
   </ItemGroup>
 

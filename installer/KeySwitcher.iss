@@ -13,7 +13,7 @@
   #define PublishDir "publish"
 #endif
 
-; Framework-dependent збірці потрібен .NET Desktop Runtime 10 (4 МБ інсталятора замість 51 МБ);
+; Framework-dependent збірці потрібен .NET Desktop Runtime 10 (7.5 МБ інсталятора замість 51 МБ);
 ; self-contained несе рантайм у собі. Скрипт збірки передає /DNeedsDesktopRuntime для першого варіанта
 ; і мовчить для другого — разом із перевіркою зникає й завантаження. Саме #ifdef, а не #if:
 ; значення define-а з командного рядка має тип-рядок, і арифметика з ним непевна, а наявність — однозначна.
@@ -107,7 +107,7 @@ Source: "..\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 
 [InstallDelete]
 ; Inno при апгрейді не прибирає файли, яких немає в новій версії. А перехід між framework-dependent і
-; self-contained збірками міняє склад теки радикально: 7 файлів проти 254. Без цього рядка після
+; self-contained збірками міняє склад теки радикально: 10 файлів проти 254. Без цього рядка після
 ; апгрейду в теці лишався б цілий рантайм .NET (165 МБ), якого вже ніхто не використовує.
 ; Тека — наша від початку й до кінця, користувацьких файлів у ній не буває (налаштування живуть
 ; в %AppData%). Файли деінсталятора Inno перепише свої.
@@ -195,12 +195,20 @@ begin
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
 begin
   if CurUninstallStep = usUninstall then
   begin
     // Той самий Restart Manager не закриє фонову тулзу й тут — без цього видалення лишило б
     // зайняті файли в теці застосунку.
     StopRunningApp();
+
+    // Реєстрацію toast-сповіщень (HKCU\Software\Classes\AppUserModelId, COM-активатор, кешована іконка)
+    // прибирає сам застосунок: ідентифікатори бібліотека виводить зі шляху до exe, і назвати їх може
+    // лише вона. Код виходу не перевіряємо — без рантайму .NET exe не стартує, а видалення мусить пройти.
+    Exec(ExpandConstant('{app}\KeySwitcher.UI.exe'), '--unregister-notifications', '', SW_HIDE,
+      ewWaitUntilTerminated, ResultCode);
 
     // Мертвий шлях у ключі автозапуску не має пережити програму: запис робить застосунок (Run-ключ
     // з'являється, коли ввімкнено autoStart), тому видаляємо безумовно.

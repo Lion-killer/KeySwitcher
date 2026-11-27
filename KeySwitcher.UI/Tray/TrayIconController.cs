@@ -1,14 +1,24 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
 using KeySwitcher.Core.Layout;
+using MouseButtons = System.Windows.Forms.MouseButtons;
+using NotifyIcon = System.Windows.Forms.NotifyIcon;
+using ToolTipIcon = System.Windows.Forms.ToolTipIcon;
+using WpfFontFamily = System.Windows.Media.FontFamily;
 using Serilog;
 
 namespace KeySwitcher.UI.Tray;
 
 /// <summary>
 /// Tray icon showing the flag of the active layout, plus a context menu.
+/// <para>
+/// The icon itself is WinForms (WPF has no tray icon), but the menu is a WPF <see cref="ContextMenu"/>:
+/// a WinForms <c>ContextMenuStrip</c> is drawn in the Windows 7 style and ignores the app theme, while the
+/// WPF menu picks up the Fluent theme (App.ThemeMode) — light/dark and accent, like the settings window.
+/// </para>
 /// Owns the <see cref="NotifyIcon"/> WinAPI handle, therefore <see cref="IDisposable"/>;
 /// disposed last in the App dispose chain.
 /// </summary>
@@ -20,12 +30,12 @@ internal sealed class TrayIconController : IDisposable
 
     private readonly Icon _englishIcon = CreateEnglishFlag();
     private readonly Icon _ukrainianIcon = CreateUkrainianFlag();
-    private readonly ToolStripMenuItem _enabledItem;
-    private readonly ContextMenuStrip _menu;
+    private readonly MenuItem _enabledItem;
+    private readonly ContextMenu _menu;
+    private readonly Window _menuHost;
     private readonly NotifyIcon _notifyIcon;
 
     private KeyboardLanguage _language = KeyboardLanguage.Unknown;
-    private Action? _balloonClick;
     private bool _disposed;
 
     /// <summary>Raised when the user asks for the settings window (menu item or double click).</summary>
@@ -39,47 +49,60 @@ internal sealed class TrayIconController : IDisposable
 
     public TrayIconController()
     {
-        _enabledItem = new ToolStripMenuItem("Увімкнено") { CheckOnClick = true, Checked = true };
-        _enabledItem.Click += (_, _) => EnabledChanged?.Invoke(_enabledItem.Checked);
+        // MenuItem toggles IsChecked itself before raising Click, so the handler sees the new state.
+        _enabledItem = new MenuItem { Header = "Увімкнено", IsCheckable = true, IsChecked = true };
+        _enabledItem.Click += (_, _) => EnabledChanged?.Invoke(_enabledItem.IsChecked);
 
-        var settingsItem = new ToolStripMenuItem("Налаштування...");
+        var settingsItem = new MenuItem { Header = "Налаштування...", Icon = Glyph(""), FontWeight = FontWeights.SemiBold };
         settingsItem.Click += (_, _) => SettingsRequested?.Invoke();
 
-        var exitItem = new ToolStripMenuItem("Вихід");
+        var exitItem = new MenuItem { Header = "Вихід", Icon = Glyph("") };
         exitItem.Click += (_, _) => ExitRequested?.Invoke();
 
-        _menu = new ContextMenuStrip();
-        _menu.Items.AddRange(
-        [
-            _enabledItem,
-            new ToolStripSeparator(),
-            settingsItem,
-            new ToolStripSeparator(),
-            exitItem
-        ]);
+        _menu = new ContextMenu();
+        _menu.Items.Add(_enabledItem);
+        _menu.Items.Add(new Separator());
+        _menu.Items.Add(settingsItem);
+        _menu.Items.Add(new Separator());
+        _menu.Items.Add(exitItem);
+
+        // A popup menu of a background app closes on an outside click only if that app is in the
+        // foreground; otherwise it hangs on screen until an item is picked. An invisible window that is
+        // activated before the menu opens gives it that foreground — and when the user clicks elsewhere,
+        // the window deactivates and takes the menu with it. (ContextMenuStrip did the same internally.)
+        _menuHost = new Window
+        {
+            Width = 0, Height = 0,
+            WindowStyle = WindowStyle.None,
+            AllowsTransparency = true,
+            Background = System.Windows.Media.Brushes.Transparent,
+            ShowInTaskbar = false,
+            ShowActivated = true,
+            Topmost = true,
+        };
+        _menu.PlacementTarget = _menuHost;
+        _menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+        _menu.Closed += (_, _) => _menuHost.Hide();
+        _menuHost.Deactivated += (_, _) => _menu.IsOpen = false;
 
         _notifyIcon = new NotifyIcon
         {
             Icon = _englishIcon,
             Text = TooltipEnglish,
-            ContextMenuStrip = _menu,
             Visible = true
         };
-        _notifyIcon.DoubleClick += (_, _) => SettingsRequested?.Invoke();
-        _notifyIcon.BalloonTipClicked += (_, _) =>
+        _notifyIcon.MouseUp += (_, e) =>
         {
-            // One click, one action: a balloon that was dismissed and clicked later must not fire twice.
-            Action? click = _balloonClick;
-            _balloonClick = null;
-            click?.Invoke();
+            if (e.Button == MouseButtons.Right) ShowMenu();
         };
+        _notifyIcon.DoubleClick += (_, _) => SettingsRequested?.Invoke();
     }
 
     /// <summary>Check state of the "Увімкнено" item. Setting it does not raise <see cref="EnabledChanged"/>.</summary>
     public bool IsEnabled
     {
-        get => _enabledItem.Checked;
-        set => _enabledItem.Checked = value;
+        get => _enabledItem.IsChecked;
+        set => _enabledItem.IsChecked = value;
     }
 
     /// <summary>Shows the flag matching the given layout; no-op when it is already displayed.</summary>
@@ -102,21 +125,36 @@ internal sealed class TrayIconController : IDisposable
     /// Shows a balloon next to the tray icon. For things the user must know but that should not steal
     /// focus with a dialog — the tray app is a background tool, not a chat partner.
     /// </summary>
-    /// <param name="onClick">
-    /// Runs on the UI thread when the user clicks the balloon; a balloon has no buttons, so a click is the
-    /// only way to answer one. The action belongs to the balloon shown last — a later balloon (an unrelated
-    /// warning, say) replaces it, and clicking that warning will not fire something the user never saw.
-    /// </param>
-    public void ShowBalloon(string title, string text, Action? onClick = null)
+    /// <remarks>
+    /// Notices only: Windows 11 reports the balloon's ✕ as a click and drops the balloon entirely under
+    /// "Do not disturb", so anything the user may answer goes through a toast (App.LearnPersonalWord).
+    /// </remarks>
+    public void ShowBalloon(string title, string text)
     {
         if (_disposed) return;
 
-        _balloonClick = onClick;
         _notifyIcon.BalloonTipTitle = title;
         _notifyIcon.BalloonTipText = text;
         _notifyIcon.BalloonTipIcon = ToolTipIcon.Info;
         _notifyIcon.ShowBalloonTip(10000);
     }
+
+    private void ShowMenu()
+    {
+        if (_disposed) return;
+
+        _menuHost.Show();
+        _menuHost.Activate();
+        _menu.IsOpen = true;
+    }
+
+    // Menu icons come from the system icon font, the same one the Windows 11 menus use.
+    private static TextBlock Glyph(string glyph) => new()
+    {
+        Text = glyph,
+        FontFamily = new WpfFontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+        FontSize = 14,
+    };
 
     public void Dispose()
     {
@@ -125,7 +163,8 @@ internal sealed class TrayIconController : IDisposable
 
         _notifyIcon.Visible = false; // must be hidden before disposing, otherwise the icon lingers
         _notifyIcon.Dispose();
-        _menu.Dispose();
+        _menu.IsOpen = false;
+        _menuHost.Close();
         _englishIcon.Dispose();
         _ukrainianIcon.Dispose();
     }

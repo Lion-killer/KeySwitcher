@@ -267,13 +267,13 @@ public partial class SettingsWindow : Window
             File.WriteAllText(dialog.FileName, SettingsStorage.ToJson(CollectSettings()));
             Log.Information("settings: exported to {Path}", dialog.FileName);
 
-            MessageBox.Show(this, $"Налаштування збережено у файл:\n{dialog.FileName}", "KeySwitcher",
+            MessageDialog.Show(this, $"Налаштування збережено у файл:\n{dialog.FileName}", "KeySwitcher",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             Log.Error(ex, "settings export failed");
-            MessageBox.Show(this, $"Не вдалося зберегти файл:\n{ex.Message}", "KeySwitcher",
+            MessageDialog.Show(this, $"Не вдалося зберегти файл:\n{ex.Message}", "KeySwitcher",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -298,7 +298,7 @@ public partial class SettingsWindow : Window
 
             // Deliberately not applied yet: the dialog now shows what arrived, and "Зберегти" makes it real.
             // A file that turns out to be the wrong one can simply be cancelled.
-            MessageBox.Show(this, "Налаштування завантажено у вікно. Перевірте значення й натисніть «Зберегти».",
+            MessageDialog.Show(this, "Налаштування завантажено у вікно. Перевірте значення й натисніть «Зберегти».",
                 "KeySwitcher", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
@@ -306,7 +306,7 @@ public partial class SettingsWindow : Window
             // Throws on purpose (SettingsStorage.FromJson) — a silent fall back to defaults would look
             // like a successful import of an empty file.
             Log.Warning(ex, "settings import failed for {Path}", dialog.FileName);
-            MessageBox.Show(this, $"Не вдалося прочитати файл налаштувань:\n{ex.Message}", "KeySwitcher",
+            MessageDialog.Show(this, $"Не вдалося прочитати файл налаштувань:\n{ex.Message}", "KeySwitcher",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }

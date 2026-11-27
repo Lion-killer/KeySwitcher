@@ -4,8 +4,8 @@
 
 .DESCRIPTION
     Два кроки, кожен можна виконати окремо:
-      1. dotnet publish → installer\publish (за замовчуванням framework-dependent: 7 файлів / 12 МБ,
-         інсталятор ~4 МБ — .NET Desktop Runtime 10 інсталятор довантажує й ставить сам, якщо його
+      1. dotnet publish → installer\publish (за замовчуванням framework-dependent: 10 файлів / 35 МБ,
+         інсталятор ~7.5 МБ — .NET Desktop Runtime 10 інсталятор довантажує й ставить сам, якщо його
          нема на машині; -SelfContained дає самодостатній варіант — 254 файли / 165 МБ, інсталятор
          ~51 МБ, зате .NET на цільовій машині не потрібен);
       2. ISCC.exe KeySwitcher.iss → installer\out\KeySwitcherSetup-<версія>.exe.
